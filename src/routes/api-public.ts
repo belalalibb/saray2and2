@@ -79,6 +79,19 @@ pub.post('/contact', async (c) => {
   return c.json({ success: true, request_ref: ref }, 201)
 })
 
+// Serve uploaded media (public — images used across the site)
+pub.get('/media/file/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!id) return c.notFound()
+  const row = await c.env.DB.prepare('SELECT mime_type, data FROM media WHERE id = ?').bind(id).first<any>()
+  if (!row || !row.data) return c.notFound()
+  const bin = Uint8Array.from(atob(row.data), ch => ch.charCodeAt(0))
+  return c.body(bin, 200, {
+    'Content-Type': row.mime_type || 'image/jpeg',
+    'Cache-Control': 'public, max-age=31536000, immutable'
+  })
+})
+
 // Lightweight analytics tracking
 pub.post('/track', async (c) => {
   try {
