@@ -1,7 +1,7 @@
 -- SEED DATA — Saraya Al-Andalus
 -- Default super admin (email: admin@saraya-andalus.com / password: SarayaAdmin@2026)
 INSERT OR IGNORE INTO admin_users (id, email, name, password_hash, password_salt, role) VALUES
-  (1, 'admin@saraya-andalus.com', 'المدير العام', 'b226307e53202b64db99ec10cf49d142f5fe399b82408a410f7832fd3528ca70', 'ca159db9492ec05ad427b767d85f2f04', 'super_admin');
+  (1, 'admin@saraya-andalus.com', 'المدير العام', '86e8bd63aeac6814792b4b5e5b5847d0d8ec00fab7e023fbf972a2e5c1c4a5b8', 'ca159db9492ec05ad427b767d85f2f04', 'super_admin');
 
 -- Settings (approved company data ONLY)
 INSERT OR REPLACE INTO settings (key, value) VALUES

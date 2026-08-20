@@ -628,97 +628,107 @@ async function vProjects(v) {
 async function vHomepage(v) {
   try {
     const { data } = await api.get('/admin/homepage');
+    const SECTION_LABELS = { hero: 'الواجهة الرئيسية (Hero)', about: 'عن الشركة', categories: 'الفئات', featured: 'منتجات مميزة', services: 'الخدمات', projects: 'المشاريع', why_us: 'لماذا نحن', cta: 'دعوة للتواصل (CTA)' };
     v.innerHTML = `
-    <div class="space-y-8">
-      <section>
-        <h2 class="font-black text-charcoal mb-3"><i class="fas fa-table-columns text-gold ml-2"></i>أقسام الصفحة الرئيسية</h2>
-        <div class="bg-white rounded-2xl overflow-x-auto">
-          <table class="tbl"><thead><tr><th>القسم</th><th>العنوان</th><th>الحالة</th><th>ترتيب</th><th></th></tr></thead><tbody>
-            ${data.sections.map(s => `<tr>
-              <td class="font-mono text-xs" dir="ltr">${esc(s.section_key)}</td>
-              <td class="font-semibold">${esc(s.title_ar || '')}</td>
-              <td>${s.is_active ? '<span class="badge bg-green-100 text-green-800">ظاهر</span>' : '<span class="badge bg-gray-100 text-gray-600">مخفي</span>'}</td>
-              <td>${s.sort_order}</td>
-              <td><button class="btn btn-ghost !py-1 !px-3 text-xs" data-sec="${s.id}"><i class="fas fa-pen"></i></button></td>
+      <h3 class="font-bold text-brown mb-3">أقسام الصفحة الرئيسية</h3>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">القسم</th><th class="p-3 text-right">العنوان</th><th class="p-3">الحالة</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.sections || []).map(s => `
+            <tr class="border-t border-cream">
+              <td class="p-3 font-semibold">${esc(SECTION_LABELS[s.section_key] || s.section_key)}</td>
+              <td class="p-3">${esc(s.title_ar || '—')}</td>
+              <td class="p-3 text-center"><span class="badge ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.is_active ? 'مفعّل' : 'معطّل'}</span></td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-sec-edit="${s.id}" class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i> تعديل</button>
+                <button data-sec-toggle="${s.id}" data-active="${s.is_active}" class="text-amber-600 hover:underline"><i class="fas fa-power-off"></i> ${s.is_active ? 'تعطيل' : 'تفعيل'}</button>
+              </td>
             </tr>`).join('')}
-          </tbody></table>
-        </div>
-      </section>
-      <section>
-        <div class="flex justify-between items-center mb-3">
-          <h2 class="font-black text-charcoal"><i class="fas fa-medal text-gold ml-2"></i>نقاط "لماذا نحن"</h2>
-          <button id="wu-add" class="btn btn-gold text-xs"><i class="fas fa-plus ml-1"></i>نقطة جديدة</button>
-        </div>
-        <div class="bg-white rounded-2xl overflow-x-auto">
-          <table class="tbl"><thead><tr><th>العنوان</th><th>الوصف</th><th>ترتيب</th><th></th></tr></thead><tbody>
-            ${data.why_us.map(w => `<tr>
-              <td class="font-semibold"><i class="fas ${esc(w.icon || 'fa-check')} text-gold ml-2"></i>${esc(w.title_ar)}</td>
-              <td class="text-xs max-w-xs truncate">${esc(w.description_ar || '')}</td>
-              <td>${w.sort_order}</td>
-              <td class="whitespace-nowrap">
-                <button class="btn btn-ghost !py-1 !px-3 text-xs" data-wuedit="${w.id}"><i class="fas fa-pen"></i></button>
-                <button class="btn btn-red !py-1 !px-3 text-xs" data-wudel="${w.id}"><i class="fas fa-trash"></i></button>
-              </td></tr>`).join('')}
-          </tbody></table>
-        </div>
-      </section>
-    </div>`;
+          </tbody>
+        </table>
+      </div>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-brown">نقاط "لماذا نحن"</h3>
+        <button id="wu-add" class="btn-gold"><i class="fas fa-plus ml-1"></i> إضافة نقطة</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">الأيقونة</th><th class="p-3 text-right">العنوان</th><th class="p-3 text-right">الوصف</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.why_us || []).map(w => `
+            <tr class="border-t border-cream">
+              <td class="p-3"><i class="fas ${esc(w.icon || 'fa-star')} text-gold"></i> <span class="text-xs text-brown/50">${esc(w.icon || '')}</span></td>
+              <td class="p-3 font-semibold">${esc(w.title_ar)}</td>
+              <td class="p-3 text-brown/70">${esc(w.description_ar || '—')}</td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-wu-edit='${esc(JSON.stringify(w))}' class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i></button>
+                <button data-wu-del="${w.id}" class="text-red-600 hover:underline"><i class="fas fa-trash"></i></button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
     const secForm = (s) => {
       const m = modal(`
-        <h2 class="text-lg font-black mb-1">تعديل قسم: <span class="font-mono text-sm" dir="ltr">${esc(s.section_key)}</span></h2>
-        <p class="text-xs text-brown/50 mb-5">التعديلات تظهر مباشرة في الصفحة الرئيسية للموقع.</p>
-        <div class="grid gap-4">
-          <div><label class="text-xs font-bold">العنوان بالعربية</label><input id="hs-title_ar" class="inp mt-1" value="${esc(s.title_ar||'')}"></div>
-          <div><label class="text-xs font-bold">المحتوى / الوصف</label><textarea id="hs-content_ar" rows="4" class="inp mt-1">${esc(s.content_ar||'')}</textarea></div>
-          <div class="grid grid-cols-2 gap-4">
-            <div><label class="text-xs font-bold">نص زر الإجراء</label><input id="hs-cta_text_ar" class="inp mt-1" value="${esc(s.cta_text_ar||'')}"></div>
-            <div><label class="text-xs font-bold">رابط الزر</label><input id="hs-cta_url" class="inp mt-1" dir="ltr" value="${esc(s.cta_url||'')}"></div>
+        <h3 class="font-bold text-lg text-brown mb-4">تعديل قسم: ${esc(SECTION_LABELS[s.section_key] || s.section_key)}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">العنوان (عربي)</label><input id="hs-title" class="inp" value="${esc(s.title_ar || '')}"></div>
+          <div><label class="lbl">المحتوى (عربي)</label><textarea id="hs-content" class="inp" rows="4">${esc(s.content_ar || '')}</textarea></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">نص الزر (CTA)</label><input id="hs-cta-text" class="inp" value="${esc(s.cta_text_ar || '')}"></div>
+            <div><label class="lbl">رابط الزر</label><input id="hs-cta-url" class="inp" dir="ltr" value="${esc(s.cta_url || '')}"></div>
           </div>
-          <div>
-            <label class="text-xs font-bold">الصورة</label>
-            <div class="flex items-center gap-3 mt-1">
-              <img id="hs-preview" src="${esc(s.image_url||'/static/images/hero-main.jpg')}" class="w-24 h-16 object-cover rounded-lg border border-sand">
-              <button type="button" id="hs-pick" class="btn btn-ghost text-xs">اختيار صورة</button>
-            </div>
+          <div><label class="lbl">رابط الصورة</label>
+            <div class="flex gap-2"><input id="hs-image" class="inp flex-1" dir="ltr" value="${esc(s.image_url || '')}">
+            <button id="hs-pick" class="btn-outline shrink-0"><i class="fas fa-images"></i></button></div>
           </div>
-          <div class="flex items-center gap-5">
-            <div><label class="text-xs font-bold">الترتيب</label><input id="hs-sort_order" type="number" class="inp mt-1 w-24" dir="ltr" value="${s.sort_order ?? 0}"></div>
-            <label class="text-sm font-semibold mt-5"><input type="checkbox" id="hs-is_active" ${s.is_active ? 'checked' : ''}> ظاهر في الموقع</label>
+          <p id="hs-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="hs-save" class="btn-gold">حفظ</button>
           </div>
-        </div>
-        <div id="hs-error" class="hidden text-sm text-red-600 bg-red-50 rounded-xl p-3 mt-4"></div>
-        <button id="hs-save" class="btn btn-gold w-full mt-5 py-3">حفظ</button>`);
-      let img = s.image_url || '';
-      m.querySelector('#hs-pick').addEventListener('click', () => pickImage(u => { img = u; m.querySelector('#hs-preview').src = u; }));
-      m.querySelector('#hs-save').addEventListener('click', async () => {
-        const g = id => m.querySelector('#hs-' + id);
-        const body = { title_ar: g('title_ar').value.trim() || null, content_ar: g('content_ar').value.trim() || null,
-          cta_text_ar: g('cta_text_ar').value.trim() || null, cta_url: g('cta_url').value.trim() || null,
-          image_url: img || null, sort_order: +g('sort_order').value || 0, is_active: g('is_active').checked ? 1 : 0 };
-        const eb = m.querySelector('#hs-error'); eb.classList.add('hidden');
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('hs-pick').addEventListener('click', () => pickImage(url => { g('hs-image').value = url; }));
+      g('hs-save').addEventListener('click', async () => {
+        const body = { title_ar: g('hs-title').value.trim(), content_ar: g('hs-content').value.trim(),
+          cta_text_ar: g('hs-cta-text').value.trim(), cta_url: g('hs-cta-url').value.trim(), image_url: g('hs-image').value.trim() };
         try { await api.put('/admin/homepage/sections/' + s.id, body); toast('تم الحفظ'); m.remove(); vHomepage(v); }
-        catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+        catch (er) { const eb = g('hs-error'); eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
       });
     };
+    v.querySelectorAll('[data-sec-edit]').forEach(b => b.addEventListener('click', () => {
+      const s = (data.sections || []).find(x => x.id == b.dataset.secEdit); if (s) secForm(s);
+    }));
+    v.querySelectorAll('[data-sec-toggle]').forEach(b => b.addEventListener('click', async () => {
+      try { await api.put('/admin/homepage/sections/' + b.dataset.secToggle, { is_active: b.dataset.active === '1' ? 0 : 1 }); toast('تم التحديث'); vHomepage(v); }
+      catch (e) { toast(errMsg(e), false); }
+    }));
+
     const wuForm = (w) => {
       w = w || {};
       const m = modal(`
-        <h2 class="text-lg font-black mb-5">${w.id ? 'تعديل نقطة' : 'نقطة جديدة'}</h2>
-        <div class="grid gap-4">
-          <div><label class="text-xs font-bold">العنوان بالعربية *</label><input id="wu-title_ar" class="inp mt-1" value="${esc(w.title_ar||'')}"></div>
-          <div><label class="text-xs font-bold">الوصف</label><textarea id="wu-description_ar" rows="2" class="inp mt-1">${esc(w.description_ar||'')}</textarea></div>
-          <div class="grid grid-cols-2 gap-4">
-            <div><label class="text-xs font-bold">أيقونة (فونت أوسم)</label><input id="wu-icon" class="inp mt-1" dir="ltr" value="${esc(w.icon||'fa-check')}"></div>
-            <div><label class="text-xs font-bold">الترتيب</label><input id="wu-sort_order" type="number" class="inp mt-1" dir="ltr" value="${w.sort_order ?? 0}"></div>
+        <h3 class="font-bold text-lg text-brown mb-4">${w.id ? 'تعديل نقطة' : 'إضافة نقطة'}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">الأيقونة (FontAwesome مثال: fa-medal)</label><input id="wu-icon" class="inp" dir="ltr" value="${esc(w.icon || 'fa-star')}"></div>
+          <div><label class="lbl">العنوان (عربي) *</label><input id="wu-title" class="inp" value="${esc(w.title_ar || '')}"></div>
+          <div><label class="lbl">الوصف (عربي)</label><textarea id="wu-desc" class="inp" rows="3">${esc(w.description_ar || '')}</textarea></div>
+          <div><label class="lbl">الترتيب</label><input id="wu-order" type="number" class="inp" value="${w.sort_order ?? 0}"></div>
+          <p id="wu-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="wu-save" class="btn-gold">حفظ</button>
           </div>
-        </div>
-        <div id="wu-error" class="hidden text-sm text-red-600 bg-red-50 rounded-xl p-3 mt-4"></div>
-        <button id="wu-save" class="btn btn-gold w-full mt-5 py-3">حفظ</button>`);
-      m.querySelector('#wu-save').addEventListener('click', async () => {
-        const g = id => m.querySelector('#wu-' + id);
-        const body = { title_ar: g('title_ar').value.trim(), description_ar: g('description_ar').value.trim() || null,
-          icon: g('icon').value.trim() || null, sort_order: +g('sort_order').value || 0 };
-        const eb = m.querySelector('#wu-error'); eb.classList.add('hidden');
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('wu-save').addEventListener('click', async () => {
+        const body = { icon: g('wu-icon').value.trim(), title_ar: g('wu-title').value.trim(),
+          description_ar: g('wu-desc').value.trim(), sort_order: Number(g('wu-order').value) || 0 };
+        const eb = g('wu-error'); eb.classList.add('hidden');
         if (!body.title_ar) { eb.textContent = 'العنوان مطلوب'; eb.classList.remove('hidden'); return; }
         try {
           if (w.id) await api.put('/admin/homepage/why-us/' + w.id, body); else await api.post('/admin/homepage/why-us', body);
@@ -726,12 +736,11 @@ async function vHomepage(v) {
         } catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
       });
     };
-    v.querySelectorAll('[data-sec]').forEach(b => b.addEventListener('click', () => secForm(data.sections.find(x => x.id === +b.dataset.sec))));
     document.getElementById('wu-add').addEventListener('click', () => wuForm(null));
-    v.querySelectorAll('[data-wuedit]').forEach(b => b.addEventListener('click', () => wuForm(data.why_us.find(x => x.id === +b.dataset.wuedit))));
-    v.querySelectorAll('[data-wudel]').forEach(b => b.addEventListener('click', async () => {
+    v.querySelectorAll('[data-wu-edit]').forEach(b => b.addEventListener('click', () => wuForm(JSON.parse(b.dataset.wuEdit))));
+    v.querySelectorAll('[data-wu-del]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('حذف النقطة؟')) return;
-      try { await api.delete('/admin/homepage/why-us/' + b.dataset.wudel); toast('تم الحذف'); vHomepage(v); } catch (e) { toast(errMsg(e), false); }
+      try { await api.delete('/admin/homepage/why-us/' + b.dataset.wuDel); toast('تم الحذف'); vHomepage(v); } catch (e) { toast(errMsg(e), false); }
     }));
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
@@ -740,40 +749,45 @@ async function vHomepage(v) {
 async function vSettings(v) {
   try {
     const { data } = await api.get('/admin/settings');
-    const s = {}; (data.settings || []).forEach(r => s[r.key] = r.value);
+    const S2 = {}; (data.settings || []).forEach(r => S2[r.key] = r.value);
     const FIELDS = [
-      ['company_name_ar', 'اسم الشركة (عربي)', 'text'],
-      ['company_name_en', 'اسم الشركة (إنجليزي)', 'ltr'],
-      ['phone', 'رقم الهاتف', 'ltr'],
-      ['whatsapp', 'رقم واتساب (بصيغة دولية بدون +)', 'ltr'],
-      ['address_ar', 'العنوان', 'text'],
-      ['footer_about_ar', 'نبذة التذييل', 'area'],
-      ['whatsapp_default_message', 'رسالة واتساب الافتراضية', 'area'],
-      ['whatsapp_product_message', 'رسالة واتساب للمنتج ({product} يُستبدل باسم المنتج)', 'area'],
-      ['seo_default_title', 'عنوان SEO الافتراضي', 'text'],
-      ['seo_default_description', 'وصف SEO الافتراضي', 'area'],
+      ['company_name_ar', 'اسم الشركة (عربي)'],
+      ['company_name_en', 'اسم الشركة (إنجليزي)'],
+      ['phone', 'رقم الهاتف'],
+      ['whatsapp', 'رقم واتساب'],
+      ['address_ar', 'العنوان'],
+      ['working_hours_ar', 'مواعيد العمل'],
+      ['whatsapp_default_message', 'رسالة واتساب الافتراضية'],
+      ['whatsapp_product_message', 'رسالة واتساب للمنتج ([PRODUCT] = اسم المنتج)'],
+      ['seo_default_title', 'عنوان SEO الافتراضي'],
+      ['seo_default_description', 'وصف SEO الافتراضي'],
+      ['facebook_url', 'رابط فيسبوك'],
+      ['instagram_url', 'رابط إنستجرام'],
     ];
     v.innerHTML = `
-    <div class="bg-white rounded-2xl p-6 max-w-3xl">
-      <p class="text-sm text-brown/60 mb-6"><i class="fas fa-circle-info text-gold ml-1"></i>هذه الإعدادات تظهر في كل صفحات الموقع (الهاتف، واتساب، التذييل...).</p>
-      <div class="grid gap-4">
-        ${FIELDS.map(([k, label, type]) => `
-          <div>
-            <label class="text-xs font-bold">${label}</label>
-            ${type === 'area'
-              ? `<textarea data-set="${k}" rows="2" class="inp mt-1">${esc(s[k] || '')}</textarea>`
-              : `<input data-set="${k}" class="inp mt-1" ${type === 'ltr' ? 'dir="ltr"' : ''} value="${esc(s[k] || '')}">`}
-          </div>`).join('')}
-      </div>
-      <div id="set-error" class="hidden text-sm text-red-600 bg-red-50 rounded-xl p-3 mt-4"></div>
-      <button id="set-save" class="btn btn-gold mt-6 px-10 py-3">حفظ الإعدادات</button>
-    </div>`;
-    document.getElementById('set-save').addEventListener('click', async () => {
+      <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl">
+        <div class="grid md:grid-cols-2 gap-4">
+          ${FIELDS.map(([k, label]) => {
+            const long = k.includes('message') || k.includes('description') || k === 'address_ar';
+            const dir = (k.includes('url') || k === 'phone' || k === 'whatsapp' || k.includes('_en')) ? 'ltr' : 'rtl';
+            return `<div class="${long ? 'md:col-span-2' : ''}">
+              <label class="lbl">${label}</label>
+              ${long
+                ? `<textarea data-key="${k}" class="inp" rows="2">${esc(S2[k] || '')}</textarea>`
+                : `<input data-key="${k}" class="inp" dir="${dir}" value="${esc(S2[k] || '')}">`}
+            </div>`;
+          }).join('')}
+        </div>
+        <p id="st-error" class="text-red-600 text-sm hidden mt-3"></p>
+        <div class="mt-5 flex justify-end">
+          <button id="st-save" class="btn-gold"><i class="fas fa-save ml-1"></i> حفظ الإعدادات</button>
+        </div>
+      </div>`;
+    document.getElementById('st-save').addEventListener('click', async () => {
       const body = {};
-      v.querySelectorAll('[data-set]').forEach(el => body[el.dataset.set] = el.value.trim());
-      const eb = document.getElementById('set-error'); eb.classList.add('hidden');
+      v.querySelectorAll('[data-key]').forEach(el => body[el.dataset.key] = el.value.trim());
       try { await api.put('/admin/settings', body); toast('تم حفظ الإعدادات'); }
-      catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+      catch (er) { const eb = document.getElementById('st-error'); eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
     });
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
@@ -783,62 +797,80 @@ async function vUsers(v) {
   try {
     const { data } = await api.get('/admin/users');
     v.innerHTML = `
-    <div class="flex justify-between items-center mb-5">
-      <p class="text-sm text-brown/60">${data.users.length} مستخدم</p>
-      <button id="usr-add" class="btn btn-gold"><i class="fas fa-plus ml-1"></i>مستخدم جديد</button>
-    </div>
-    <div class="bg-white rounded-2xl overflow-x-auto">
-      <table class="tbl"><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الحالة</th><th>آخر دخول</th><th></th></tr></thead><tbody>
-        ${data.users.map(u => `<tr>
-          <td class="font-semibold">${esc(u.name)}</td>
-          <td dir="ltr" class="text-xs">${esc(u.email)}</td>
-          <td><span class="badge bg-gold/15 text-golddark">${ROLE_LABELS[u.role] || esc(u.role)}</span></td>
-          <td>${u.is_active ? '<span class="badge bg-green-100 text-green-800">نشط</span>' : '<span class="badge bg-red-100 text-red-700">معطل</span>'}</td>
-          <td class="text-xs">${fmtDate(u.last_login_at)}</td>
-          <td class="whitespace-nowrap">
-            <button class="btn btn-ghost !py-1 !px-3 text-xs" data-edit="${u.id}"><i class="fas fa-pen"></i></button>
-            ${u.id !== S.user.id ? `<button class="btn btn-red !py-1 !px-3 text-xs" data-del="${u.id}"><i class="fas fa-trash"></i></button>` : ''}
-          </td></tr>`).join('')}
-      </tbody></table>
-    </div>`;
-    const usrForm = (u) => {
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-brown">مستخدمو لوحة التحكم</h3>
+        <button id="u-add" class="btn-gold"><i class="fas fa-user-plus ml-1"></i> إضافة مستخدم</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">الاسم</th><th class="p-3 text-right">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">آخر دخول</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.users || []).map(u => `
+            <tr class="border-t border-cream">
+              <td class="p-3 font-semibold">${esc(u.name)}${u.id === S.user.id ? ' <span class="text-xs text-gold">(أنت)</span>' : ''}</td>
+              <td class="p-3" dir="ltr">${esc(u.email)}</td>
+              <td class="p-3 text-center"><span class="badge bg-gold/15 text-golddark">${ROLE_LABELS[u.role] || u.role}</span></td>
+              <td class="p-3 text-center"><span class="badge ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${u.is_active ? 'نشط' : 'معطّل'}</span></td>
+              <td class="p-3 text-center text-brown/60">${fmtDate(u.last_login_at)}</td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-u-edit='${esc(JSON.stringify(u))}' class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i></button>
+                ${u.id !== S.user.id ? `<button data-u-del="${u.id}" class="text-red-600 hover:underline"><i class="fas fa-trash"></i></button>` : ''}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    const uForm = (u) => {
       u = u || {};
       const m = modal(`
-        <h2 class="text-lg font-black mb-5">${u.id ? 'تعديل مستخدم' : 'مستخدم جديد'}</h2>
-        <div class="grid gap-4">
-          <div><label class="text-xs font-bold">الاسم *</label><input id="uf-name" class="inp mt-1" value="${esc(u.name||'')}"></div>
-          ${u.id ? '' : '<div><label class="text-xs font-bold">البريد الإلكتروني *</label><input id="uf-email" type="email" dir="ltr" class="inp mt-1"></div>'}
-          <div><label class="text-xs font-bold">${u.id ? 'كلمة مرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور * (8 أحرف على الأقل)'}</label><input id="uf-password" type="password" dir="ltr" class="inp mt-1"></div>
-          <div><label class="text-xs font-bold">الدور</label>
-            <select id="uf-role" class="inp mt-1">
+        <h3 class="font-bold text-lg text-brown mb-4">${u.id ? 'تعديل مستخدم' : 'إضافة مستخدم'}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">الاسم *</label><input id="u-name" class="inp" value="${esc(u.name || '')}"></div>
+          <div><label class="lbl">البريد الإلكتروني *</label><input id="u-email" class="inp" dir="ltr" value="${esc(u.email || '')}" ${u.id ? 'disabled' : ''}></div>
+          <div><label class="lbl">الدور</label>
+            <select id="u-role" class="inp">
               ${Object.entries(ROLE_LABELS).map(([r, l]) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${l}</option>`).join('')}
             </select>
           </div>
-          ${u.id && u.id !== S.user.id ? `<label class="text-sm font-semibold"><input type="checkbox" id="uf-is_active" ${u.is_active ? 'checked' : ''}> نشط</label>` : ''}
-        </div>
-        <div id="uf-error" class="hidden text-sm text-red-600 bg-red-50 rounded-xl p-3 mt-4"></div>
-        <button id="uf-save" class="btn btn-gold w-full mt-5 py-3">حفظ</button>`);
-      m.querySelector('#uf-save').addEventListener('click', async () => {
-        const g = id => m.querySelector('#uf-' + id);
-        const eb = m.querySelector('#uf-error'); eb.classList.add('hidden');
+          <div><label class="lbl">${u.id ? 'كلمة مرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور * (8 أحرف على الأقل)'}</label>
+            <input id="u-pass" type="password" class="inp" dir="ltr"></div>
+          ${u.id && u.id !== S.user.id ? `
+          <label class="flex items-center gap-2 text-sm text-brown">
+            <input id="u-active" type="checkbox" ${u.is_active ? 'checked' : ''}> الحساب نشط
+          </label>` : ''}
+          <p id="u-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="u-save" class="btn-gold">حفظ</button>
+          </div>
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('u-save').addEventListener('click', async () => {
+        const eb = g('u-error'); eb.classList.add('hidden');
+        const name = g('u-name').value.trim(), pass = g('u-pass').value;
+        if (!name) { eb.textContent = 'الاسم مطلوب'; eb.classList.remove('hidden'); return; }
         try {
           if (u.id) {
-            const body = { name: g('name').value.trim(), role: g('role').value };
-            if (g('password').value) body.password = g('password').value;
-            if (g('is_active')) body.is_active = g('is_active').checked ? 1 : 0;
+            const body = { name, role: g('u-role').value };
+            if (pass) body.password = pass;
+            const ac = g('u-active'); if (ac) body.is_active = ac.checked ? 1 : 0;
             await api.put('/admin/users/' + u.id, body);
           } else {
-            await api.post('/admin/users', { name: g('name').value.trim(), email: g('email').value.trim(), password: g('password').value, role: g('role').value });
+            const email = g('u-email').value.trim();
+            if (!email || !pass) { eb.textContent = 'البريد وكلمة المرور مطلوبان'; eb.classList.remove('hidden'); return; }
+            await api.post('/admin/users', { name, email, password: pass, role: g('u-role').value });
           }
           toast('تم الحفظ'); m.remove(); vUsers(v);
         } catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
       });
     };
-    document.getElementById('usr-add').addEventListener('click', () => usrForm(null));
-    v.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => usrForm(data.users.find(x => x.id === +b.dataset.edit))));
-    v.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
-      if (!confirm('حذف المستخدم؟')) return;
-      try { await api.delete('/admin/users/' + b.dataset.del); toast('تم الحذف'); vUsers(v); } catch (e) { toast(errMsg(e), false); }
+    document.getElementById('u-add').addEventListener('click', () => uForm(null));
+    v.querySelectorAll('[data-u-edit]').forEach(b => b.addEventListener('click', () => uForm(JSON.parse(b.dataset.uEdit))));
+    v.querySelectorAll('[data-u-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('حذف المستخدم نهائياً؟')) return;
+      try { await api.delete('/admin/users/' + b.dataset.uDel); toast('تم الحذف'); vUsers(v); } catch (e) { toast(errMsg(e), false); }
     }));
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
@@ -847,28 +879,25 @@ async function vUsers(v) {
 async function vAudit(v) {
   try {
     const { data } = await api.get('/admin/audit');
-    const ACT = { login: 'تسجيل دخول', create: 'إنشاء', update: 'تعديل', delete: 'حذف' };
+    const ACTION_LABELS = { create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', status_change: 'تغيير حالة' };
+    const ENTITY_LABELS = { products: 'منتج', categories: 'فئة', services: 'خدمة', projects: 'مشروع', leads: 'طلب', home_sections: 'قسم رئيسية', why_us_points: 'نقطة لماذا نحن', settings: 'إعدادات', admin_users: 'مستخدم', media: 'وسائط' };
     v.innerHTML = `
-    <div class="bg-white rounded-2xl overflow-x-auto">
-      <table class="tbl"><thead><tr><th>المستخدم</th><th>الإجراء</th><th>الكيان</th><th>المعرف</th><th>التاريخ</th></tr></thead><tbody>
-        ${(data.audit || []).map(a => `<tr>
-          <td dir="ltr" class="text-xs">${esc(a.user_email || '')}</td>
-          <td><span class="badge ${a.action === 'delete' ? 'bg-red-100 text-red-700' : a.action === 'create' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}">${ACT[a.action] || esc(a.action)}</span></td>
-          <td class="font-mono text-xs" dir="ltr">${esc(a.entity || '')}</td>
-          <td>${a.entity_id ?? '—'}</td>
-          <td class="text-xs">${fmtDate(a.created_at)}</td>
-        </tr>`).join('') || '<tr><td colspan="5" class="text-center py-10 text-brown/50">لا يوجد نشاط بعد</td></tr>'}
-      </tbody></table>
-    </div>`;
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المستخدم</th><th class="p-3">الإجراء</th><th class="p-3 text-right">العنصر</th>
+          </tr></thead>
+          <tbody>${(data.audit || []).map(a => `
+            <tr class="border-t border-cream">
+              <td class="p-3 text-brown/60 whitespace-nowrap">${fmtDate(a.created_at)}</td>
+              <td class="p-3 font-semibold">${esc(a.user_name || a.user_email || '—')}</td>
+              <td class="p-3 text-center"><span class="badge ${a.action === 'delete' ? 'bg-red-100 text-red-600' : a.action === 'create' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">${ACTION_LABELS[a.action] || esc(a.action)}</span></td>
+              <td class="p-3">${ENTITY_LABELS[a.entity] || esc(a.entity || '—')}${a.entity_id ? ` <span class="text-brown/40">#${a.entity_id}</span>` : ''}</td>
+            </tr>`).join('') || '<tr><td colspan="4" class="p-6 text-center text-brown/50">لا يوجد نشاط بعد</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
 
-// ---------- BOOT ----------
-(async () => {
-  try {
-    const { data } = await api.get('/auth/me');
-    if (data.user) { S.user = data.user; renderShell(); return; }
-  } catch { /* not logged in */ }
-  renderLogin();
-})();
 })();

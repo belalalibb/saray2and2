@@ -623,3 +623,281 @@ async function vProjects(v) {
     }));
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
+
+// ---------- HOMEPAGE ----------
+async function vHomepage(v) {
+  try {
+    const { data } = await api.get('/admin/homepage');
+    const SECTION_LABELS = { hero: 'الواجهة الرئيسية (Hero)', about: 'عن الشركة', categories: 'الفئات', featured: 'منتجات مميزة', services: 'الخدمات', projects: 'المشاريع', why_us: 'لماذا نحن', cta: 'دعوة للتواصل (CTA)' };
+    v.innerHTML = `
+      <h3 class="font-bold text-brown mb-3">أقسام الصفحة الرئيسية</h3>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">القسم</th><th class="p-3 text-right">العنوان</th><th class="p-3">الحالة</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.sections || []).map(s => `
+            <tr class="border-t border-cream">
+              <td class="p-3 font-semibold">${esc(SECTION_LABELS[s.section_key] || s.section_key)}</td>
+              <td class="p-3">${esc(s.title_ar || '—')}</td>
+              <td class="p-3 text-center"><span class="badge ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.is_active ? 'مفعّل' : 'معطّل'}</span></td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-sec-edit="${s.id}" class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i> تعديل</button>
+                <button data-sec-toggle="${s.id}" data-active="${s.is_active}" class="text-amber-600 hover:underline"><i class="fas fa-power-off"></i> ${s.is_active ? 'تعطيل' : 'تفعيل'}</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-brown">نقاط "لماذا نحن"</h3>
+        <button id="wu-add" class="btn-gold"><i class="fas fa-plus ml-1"></i> إضافة نقطة</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">الأيقونة</th><th class="p-3 text-right">العنوان</th><th class="p-3 text-right">الوصف</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.why_us || []).map(w => `
+            <tr class="border-t border-cream">
+              <td class="p-3"><i class="fas ${esc(w.icon || 'fa-star')} text-gold"></i> <span class="text-xs text-brown/50">${esc(w.icon || '')}</span></td>
+              <td class="p-3 font-semibold">${esc(w.title_ar)}</td>
+              <td class="p-3 text-brown/70">${esc(w.description_ar || '—')}</td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-wu-edit='${esc(JSON.stringify(w))}' class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i></button>
+                <button data-wu-del="${w.id}" class="text-red-600 hover:underline"><i class="fas fa-trash"></i></button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    const secForm = (s) => {
+      const m = modal(`
+        <h3 class="font-bold text-lg text-brown mb-4">تعديل قسم: ${esc(SECTION_LABELS[s.section_key] || s.section_key)}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">العنوان (عربي)</label><input id="hs-title" class="inp" value="${esc(s.title_ar || '')}"></div>
+          <div><label class="lbl">المحتوى (عربي)</label><textarea id="hs-content" class="inp" rows="4">${esc(s.content_ar || '')}</textarea></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="lbl">نص الزر (CTA)</label><input id="hs-cta-text" class="inp" value="${esc(s.cta_text_ar || '')}"></div>
+            <div><label class="lbl">رابط الزر</label><input id="hs-cta-url" class="inp" dir="ltr" value="${esc(s.cta_url || '')}"></div>
+          </div>
+          <div><label class="lbl">رابط الصورة</label>
+            <div class="flex gap-2"><input id="hs-image" class="inp flex-1" dir="ltr" value="${esc(s.image_url || '')}">
+            <button id="hs-pick" class="btn-outline shrink-0"><i class="fas fa-images"></i></button></div>
+          </div>
+          <p id="hs-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="hs-save" class="btn-gold">حفظ</button>
+          </div>
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('hs-pick').addEventListener('click', () => pickImage(url => { g('hs-image').value = url; }));
+      g('hs-save').addEventListener('click', async () => {
+        const body = { title_ar: g('hs-title').value.trim(), content_ar: g('hs-content').value.trim(),
+          cta_text_ar: g('hs-cta-text').value.trim(), cta_url: g('hs-cta-url').value.trim(), image_url: g('hs-image').value.trim() };
+        try { await api.put('/admin/homepage/sections/' + s.id, body); toast('تم الحفظ'); m.remove(); vHomepage(v); }
+        catch (er) { const eb = g('hs-error'); eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+      });
+    };
+    v.querySelectorAll('[data-sec-edit]').forEach(b => b.addEventListener('click', () => {
+      const s = (data.sections || []).find(x => x.id == b.dataset.secEdit); if (s) secForm(s);
+    }));
+    v.querySelectorAll('[data-sec-toggle]').forEach(b => b.addEventListener('click', async () => {
+      try { await api.put('/admin/homepage/sections/' + b.dataset.secToggle, { is_active: b.dataset.active === '1' ? 0 : 1 }); toast('تم التحديث'); vHomepage(v); }
+      catch (e) { toast(errMsg(e), false); }
+    }));
+
+    const wuForm = (w) => {
+      w = w || {};
+      const m = modal(`
+        <h3 class="font-bold text-lg text-brown mb-4">${w.id ? 'تعديل نقطة' : 'إضافة نقطة'}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">الأيقونة (FontAwesome مثال: fa-medal)</label><input id="wu-icon" class="inp" dir="ltr" value="${esc(w.icon || 'fa-star')}"></div>
+          <div><label class="lbl">العنوان (عربي) *</label><input id="wu-title" class="inp" value="${esc(w.title_ar || '')}"></div>
+          <div><label class="lbl">الوصف (عربي)</label><textarea id="wu-desc" class="inp" rows="3">${esc(w.description_ar || '')}</textarea></div>
+          <div><label class="lbl">الترتيب</label><input id="wu-order" type="number" class="inp" value="${w.sort_order ?? 0}"></div>
+          <p id="wu-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="wu-save" class="btn-gold">حفظ</button>
+          </div>
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('wu-save').addEventListener('click', async () => {
+        const body = { icon: g('wu-icon').value.trim(), title_ar: g('wu-title').value.trim(),
+          description_ar: g('wu-desc').value.trim(), sort_order: Number(g('wu-order').value) || 0 };
+        const eb = g('wu-error'); eb.classList.add('hidden');
+        if (!body.title_ar) { eb.textContent = 'العنوان مطلوب'; eb.classList.remove('hidden'); return; }
+        try {
+          if (w.id) await api.put('/admin/homepage/why-us/' + w.id, body); else await api.post('/admin/homepage/why-us', body);
+          toast('تم الحفظ'); m.remove(); vHomepage(v);
+        } catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+      });
+    };
+    document.getElementById('wu-add').addEventListener('click', () => wuForm(null));
+    v.querySelectorAll('[data-wu-edit]').forEach(b => b.addEventListener('click', () => wuForm(JSON.parse(b.dataset.wuEdit))));
+    v.querySelectorAll('[data-wu-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('حذف النقطة؟')) return;
+      try { await api.delete('/admin/homepage/why-us/' + b.dataset.wuDel); toast('تم الحذف'); vHomepage(v); } catch (e) { toast(errMsg(e), false); }
+    }));
+  } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
+}
+
+// ---------- SETTINGS ----------
+async function vSettings(v) {
+  try {
+    const { data } = await api.get('/admin/settings');
+    const S2 = {}; (data.settings || []).forEach(r => S2[r.key] = r.value);
+    const FIELDS = [
+      ['company_name_ar', 'اسم الشركة (عربي)'],
+      ['company_name_en', 'اسم الشركة (إنجليزي)'],
+      ['phone', 'رقم الهاتف'],
+      ['whatsapp', 'رقم واتساب'],
+      ['address_ar', 'العنوان'],
+      ['working_hours_ar', 'مواعيد العمل'],
+      ['whatsapp_default_message', 'رسالة واتساب الافتراضية'],
+      ['whatsapp_product_message', 'رسالة واتساب للمنتج ([PRODUCT] = اسم المنتج)'],
+      ['seo_default_title', 'عنوان SEO الافتراضي'],
+      ['seo_default_description', 'وصف SEO الافتراضي'],
+      ['facebook_url', 'رابط فيسبوك'],
+      ['instagram_url', 'رابط إنستجرام'],
+    ];
+    v.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl">
+        <div class="grid md:grid-cols-2 gap-4">
+          ${FIELDS.map(([k, label]) => {
+            const long = k.includes('message') || k.includes('description') || k === 'address_ar';
+            const dir = (k.includes('url') || k === 'phone' || k === 'whatsapp' || k.includes('_en')) ? 'ltr' : 'rtl';
+            return `<div class="${long ? 'md:col-span-2' : ''}">
+              <label class="lbl">${label}</label>
+              ${long
+                ? `<textarea data-key="${k}" class="inp" rows="2">${esc(S2[k] || '')}</textarea>`
+                : `<input data-key="${k}" class="inp" dir="${dir}" value="${esc(S2[k] || '')}">`}
+            </div>`;
+          }).join('')}
+        </div>
+        <p id="st-error" class="text-red-600 text-sm hidden mt-3"></p>
+        <div class="mt-5 flex justify-end">
+          <button id="st-save" class="btn-gold"><i class="fas fa-save ml-1"></i> حفظ الإعدادات</button>
+        </div>
+      </div>`;
+    document.getElementById('st-save').addEventListener('click', async () => {
+      const body = {};
+      v.querySelectorAll('[data-key]').forEach(el => body[el.dataset.key] = el.value.trim());
+      try { await api.put('/admin/settings', body); toast('تم حفظ الإعدادات'); }
+      catch (er) { const eb = document.getElementById('st-error'); eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+    });
+  } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
+}
+
+// ---------- USERS ----------
+async function vUsers(v) {
+  try {
+    const { data } = await api.get('/admin/users');
+    v.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-brown">مستخدمو لوحة التحكم</h3>
+        <button id="u-add" class="btn-gold"><i class="fas fa-user-plus ml-1"></i> إضافة مستخدم</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">الاسم</th><th class="p-3 text-right">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">آخر دخول</th><th class="p-3">إجراءات</th>
+          </tr></thead>
+          <tbody>${(data.users || []).map(u => `
+            <tr class="border-t border-cream">
+              <td class="p-3 font-semibold">${esc(u.name)}${u.id === S.user.id ? ' <span class="text-xs text-gold">(أنت)</span>' : ''}</td>
+              <td class="p-3" dir="ltr">${esc(u.email)}</td>
+              <td class="p-3 text-center"><span class="badge bg-gold/15 text-golddark">${ROLE_LABELS[u.role] || u.role}</span></td>
+              <td class="p-3 text-center"><span class="badge ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${u.is_active ? 'نشط' : 'معطّل'}</span></td>
+              <td class="p-3 text-center text-brown/60">${fmtDate(u.last_login_at)}</td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <button data-u-edit='${esc(JSON.stringify(u))}' class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i></button>
+                ${u.id !== S.user.id ? `<button data-u-del="${u.id}" class="text-red-600 hover:underline"><i class="fas fa-trash"></i></button>` : ''}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    const uForm = (u) => {
+      u = u || {};
+      const m = modal(`
+        <h3 class="font-bold text-lg text-brown mb-4">${u.id ? 'تعديل مستخدم' : 'إضافة مستخدم'}</h3>
+        <div class="space-y-3">
+          <div><label class="lbl">الاسم *</label><input id="u-name" class="inp" value="${esc(u.name || '')}"></div>
+          <div><label class="lbl">البريد الإلكتروني *</label><input id="u-email" class="inp" dir="ltr" value="${esc(u.email || '')}" ${u.id ? 'disabled' : ''}></div>
+          <div><label class="lbl">الدور</label>
+            <select id="u-role" class="inp">
+              ${Object.entries(ROLE_LABELS).map(([r, l]) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </div>
+          <div><label class="lbl">${u.id ? 'كلمة مرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور * (8 أحرف على الأقل)'}</label>
+            <input id="u-pass" type="password" class="inp" dir="ltr"></div>
+          ${u.id && u.id !== S.user.id ? `
+          <label class="flex items-center gap-2 text-sm text-brown">
+            <input id="u-active" type="checkbox" ${u.is_active ? 'checked' : ''}> الحساب نشط
+          </label>` : ''}
+          <p id="u-error" class="text-red-600 text-sm hidden"></p>
+          <div class="flex gap-2 justify-end pt-2">
+            <button class="btn-outline" data-close>إلغاء</button>
+            <button id="u-save" class="btn-gold">حفظ</button>
+          </div>
+        </div>`);
+      const g = id => m.querySelector('#' + id);
+      g('u-save').addEventListener('click', async () => {
+        const eb = g('u-error'); eb.classList.add('hidden');
+        const name = g('u-name').value.trim(), pass = g('u-pass').value;
+        if (!name) { eb.textContent = 'الاسم مطلوب'; eb.classList.remove('hidden'); return; }
+        try {
+          if (u.id) {
+            const body = { name, role: g('u-role').value };
+            if (pass) body.password = pass;
+            const ac = g('u-active'); if (ac) body.is_active = ac.checked ? 1 : 0;
+            await api.put('/admin/users/' + u.id, body);
+          } else {
+            const email = g('u-email').value.trim();
+            if (!email || !pass) { eb.textContent = 'البريد وكلمة المرور مطلوبان'; eb.classList.remove('hidden'); return; }
+            await api.post('/admin/users', { name, email, password: pass, role: g('u-role').value });
+          }
+          toast('تم الحفظ'); m.remove(); vUsers(v);
+        } catch (er) { eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+      });
+    };
+    document.getElementById('u-add').addEventListener('click', () => uForm(null));
+    v.querySelectorAll('[data-u-edit]').forEach(b => b.addEventListener('click', () => uForm(JSON.parse(b.dataset.uEdit))));
+    v.querySelectorAll('[data-u-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('حذف المستخدم نهائياً؟')) return;
+      try { await api.delete('/admin/users/' + b.dataset.uDel); toast('تم الحذف'); vUsers(v); } catch (e) { toast(errMsg(e), false); }
+    }));
+  } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
+}
+
+// ---------- AUDIT LOG ----------
+async function vAudit(v) {
+  try {
+    const { data } = await api.get('/admin/audit');
+    const ACTION_LABELS = { create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', status_change: 'تغيير حالة' };
+    const ENTITY_LABELS = { products: 'منتج', categories: 'فئة', services: 'خدمة', projects: 'مشروع', leads: 'طلب', home_sections: 'قسم رئيسية', why_us_points: 'نقطة لماذا نحن', settings: 'إعدادات', admin_users: 'مستخدم', media: 'وسائط' };
+    v.innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-cream text-brown/70"><tr>
+            <th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المستخدم</th><th class="p-3">الإجراء</th><th class="p-3 text-right">العنصر</th>
+          </tr></thead>
+          <tbody>${(data.audit || []).map(a => `
+            <tr class="border-t border-cream">
+              <td class="p-3 text-brown/60 whitespace-nowrap">${fmtDate(a.created_at)}</td>
+              <td class="p-3 font-semibold">${esc(a.user_name || a.user_email || '—')}</td>
+              <td class="p-3 text-center"><span class="badge ${a.action === 'delete' ? 'bg-red-100 text-red-600' : a.action === 'create' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">${ACTION_LABELS[a.action] || esc(a.action)}</span></td>
+              <td class="p-3">${ENTITY_LABELS[a.entity] || esc(a.entity || '—')}${a.entity_id ? ` <span class="text-brown/40">#${a.entity_id}</span>` : ''}</td>
+            </tr>`).join('') || '<tr><td colspan="4" class="p-6 text-center text-brown/50">لا يوجد نشاط بعد</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
+}
+
+})();

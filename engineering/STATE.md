@@ -1,5 +1,5 @@
 # STATE — سرايا الأندلس للأثاث الفندقي والضيافة (Website + Admin Dashboard)
-Last-Updated: 2026-08-20 (Session 003)
+Last-Updated: 2026-08-20 (Session 004)
 
 ## الحقيقة الحالية (مصدرها: الكود المُختبَر فعلياً)
 - ✅ المشروع مُستعاد بالكامل من GitHub (belalalibb/saray2and2) بعد sandbox reset.
@@ -35,3 +35,14 @@ Last-Updated: 2026-08-20 (Session 003)
 - ecosystem.config.cjs موجود ويعمل.
 - wrangler.jsonc: database_id = "local-placeholder" (يُستبدل عند deploy الإنتاج).
 - لم يتم deploy إنتاجي بعد (Cloudflare Pages) — بانتظار قرار المستخدم.
+
+## تحديث Session 004 (إصلاح لوحة الأدمن — بعد sandbox reset رقم 5)
+- 🐛 السبب الجذري لتعطّل اللوحة: public/static/admin.js كان مبتوراً (625 سطر) — ينقصه
+  vHomepage/vSettings/vUsers/vAudit + إغلاق `})();` → SyntaxError: Unexpected end of input
+  → الـ SPA بأكمله لا يُقلع (حتى شاشة الدخول لا تظهر).
+- ✅ الإصلاح: أُكمل الملف إلى 903 سطر (الـ 4 views المفقودة + الإغلاق). node --check ناجح.
+- ✅ HEAD (0111ed0) كان يحوي 4 ملفات فاسدة (lineage B) → استُعيدت من 0c0260d:
+  src/index.tsx (62 سطر) / wrangler.jsonc (d1_databases) / package.json (db:* scripts) / seed.sql (hash صحيح 86e8bd63).
+- ✅ favicon: public/favicon.svg + public/_routes.json (exclude /static/* و /favicon.svg) + روابط في layout/admin-shell.
+- ✅ دليل-النشر-والاستخدام.md: نشر مجاني على Cloudflare Pages خطوة بخطوة + دليل أدمن مبسّط.
+- ⚠️ عند أي استعادة مستقبلية: تحقق أن admin.js ≈ 903 سطر وينتهي بـ `})();` وأن src/index.tsx = 62 سطر (ليس "Hello!").

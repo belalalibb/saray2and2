@@ -1,28 +1,29 @@
 # RESUME — نقطة الاستئناف
-Last-Updated: 2026-08-20 (نهاية Session 003)
+Last-Updated: 2026-08-20 (نهاية Session 004)
 
 ## آخر Task مكتملة
-T07 — إصلاح hash كلمة سر الأدمن (SarayaAdmin@2026) في seed.sql + اختبار login ناجح.
+T15 — إصلاح لوحة الأدمن (admin.js المبتور → 903 سطر) + دليل-النشر-والاستخدام.md + push إلى main.
 
 ## الحالة
-المشروع كامل ويعمل محلياً E2E (موقع عام SSR + لوحة تحكم + API + D1 local).
-كل الاختبارات في STATE.md ناجحة.
+المشروع كامل ويعمل E2E: موقع عام SSR + لوحة تحكم كاملة (10 views) + API + D1.
+الأدمن: admin@saraya-andalus.com / SarayaAdmin@2026
+
+## ⚠️ تحذير حرج — فساد متكرر في الريبو
+عمليات sync خارجية (commits باسم [prj_*]) أفسدت الريبو مراراً.
+النسخ الذهبية: 0c0260d (Session 003) + commit نهاية Session 004 (الأحدث).
+فحص السلامة بعد أي clone:
+- `wc -l public/static/admin.js` → يجب ≈903 وينتهي بـ `})();`
+- `wc -l src/index.tsx` → يجب 62 (ليس نسخة "Hello!" ذات 12 سطر)
+- `grep 86e8bd63 seed.sql` → يجب أن يوجد (hash كلمة السر الصحيح)
+- `grep d1_databases wrangler.jsonc` → يجب أن يوجد
 
 ## Next Exact Action
-T09 (إن رغب المستخدم): Deploy إنتاجي إلى Cloudflare Pages:
-1. setup_cloudflare_api_key أو gsk hosted deploy (اسأل المستخدم عن المسار)
-2. إنشاء D1 production + تحديث database_id في wrangler.jsonc
-3. wrangler d1 migrations apply webapp-production (remote) + seed
-4. wrangler pages deploy dist
+T09 (إن رغب المستخدم): Deploy إنتاجي — الخطوات كاملة في دليل-النشر-والاستخدام.md
+(اسأل المستخدم: حسابه الخاص BYOK أم استضافة Genspark hosted deploy).
 
 ## كيف تستأنف بعد sandbox reset
-1. `git clone https://github.com/belalalibb/saray2and2.git /home/user/webapp` (الريبو هو مصدر الحقيقة)
-2. `npm install && npm run build`
-3. `npm run db:reset` (migrate + seed محلياً)
-4. `pm2 start ecosystem.config.cjs` ثم curl للتحقق
-5. بيانات الدخول: admin@saraya-andalus.com / SarayaAdmin@2026
-
-## تحذيرات
-- الخط المعتمد هو lineage A (src/lib/, src/pages/, src/routes/, migrations/0001_initial_schema.sql).
-  لا تُعِد ملفات src/lib.ts أو src/pages.ts أو migrations/0001_schema.sql (خط B محذوف).
-- لا تغيّر hash كلمة السر في seed.sql: 86e8bd63... / salt ca159db9... = SarayaAdmin@2026.
+1. `git clone https://github.com/belalalibb/saray2and2.git /home/user/webapp` (أو fetch + reset إلى origin/main)
+2. نفّذ فحص السلامة أعلاه — إن فسدت الملفات استعد من آخر commit سليم (git log --oneline)
+3. `npm install && npm run build`
+4. `npm run db:reset` (migrate + seed محلياً)
+5. `pm2 start ecosystem.config.cjs` ثم `curl http://localhost:3000`
