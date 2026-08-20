@@ -1,0 +1,17 @@
+# TASKS
+- [x] T00 Reality check بعد الـ reset — الكود فارغ (قالب فقط)
+- [x] T01 Schema + migrations + seed
+- [x] T02 Backend: auth (PBKDF2 + sessions + RBAC) + admin API + public API
+- [x] T03 Public SSR site (RTL) + SEO (sitemap/robots/404)
+- [x] T04 Admin SPA (admin.js: 10 views)
+- [x] T05 Build + migrate + seed + PM2 + اختبارات curl (Session 003)
+- [x] T06 استعادة المشروع من GitHub بعد reset + توحيد الخطين (A هو المعتمد)
+- [x] T07 إصلاح hash كلمة سر الأدمن في seed.sql (SarayaAdmin@2026)
+- [x] T08 Commit + Push إلى GitHub (0c0260d)
+- [x] T11 (S004) تشخيص وإصلاح لوحة الأدمن: admin.js مبتور (625 سطر → SyntaxError) → 903 سطر كامل
+- [x] T12 (S004) استعادة 4 ملفات فاسدة في HEAD من 0c0260d (index.tsx/wrangler.jsonc/package.json/seed.sql)
+- [x] T13 (S004) إصلاح favicon (favicon.svg + _routes.json + روابط)
+- [x] T14 (S004) دليل-النشر-والاستخدام.md (نشر مجاني + دليل أدمن)
+- [x] T15 (S004) Commit + Push إصلاحات Session 004 إلى main
+- [ ] T09 (اختياري) Deploy إنتاجي إلى Cloudflare Pages + D1 production — بانتظار المستخدم
+- [ ] T10 (اختياري) ProjectBackup tar.gz
