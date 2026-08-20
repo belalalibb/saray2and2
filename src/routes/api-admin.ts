@@ -437,7 +437,7 @@ admin.get('/audit', requireSuper(), async (c) => {
   return c.json({ audit: rows.results })
 })
 
-// ---------- Media library (list catalog images) ----------
+// ---------- Media library ----------
 admin.get('/media', requirePerm('media'), async (c) => {
   // Static catalog images + media table entries
   const staticImages = [
@@ -447,8 +447,38 @@ admin.get('/media', requirePerm('media'), async (c) => {
     'office-1','office-2','office-3','office-4','office-5',
     'storage-1','storage-2','storage-3','storage-6'
   ].map(n => ({ url: `/static/images/${n}.jpg`, filename: `${n}.jpg`, source: 'catalog' }))
-  const rows = await c.env.DB.prepare('SELECT * FROM media ORDER BY created_at DESC LIMIT 100').all()
-  return c.json({ media: [...staticImages, ...(rows.results as any[]).map(m => ({ ...m, source: 'upload' }))] })
+  const rows = await c.env.DB.prepare('SELECT id, url, filename, mime_type, size, alt_text, created_at FROM media ORDER BY created_at DESC LIMIT 200').all()
+  return c.json({ media: [...(rows.results as any[]).map(m => ({ ...m, source: 'upload' })), ...staticImages] })
+})
+
+// Upload image from device (base64 stored in D1 — no R2 needed on free tier)
+admin.post('/media/upload', requirePerm('media'), async (c) => {
+  let b: any
+  try { b = await c.req.json() } catch { return c.json({ error: 'بيانات غير صالحة' }, 400) }
+  let data = String(b.data || '')
+  let mime = String(b.mime_type || 'image/jpeg')
+  // Accept data URLs
+  const m = data.match(/^data:([\w/+.-]+);base64,(.+)$/)
+  if (m) { mime = m[1]; data = m[2] }
+  if (!data || !/^[A-Za-z0-9+/=\s]+$/.test(data.slice(0, 200))) return c.json({ error: 'صورة غير صالحة' }, 400)
+  if (!/^image\//.test(mime)) return c.json({ error: 'يُسمح بملفات الصور فقط' }, 400)
+  if (data.length > 1_800_000) return c.json({ error: 'حجم الصورة كبير جداً (الحد الأقصى ~1.3MB بعد الضغط)' }, 413)
+  const size = Math.floor(data.length * 3 / 4)
+  const filename = String(b.filename || 'upload.jpg').slice(0, 120)
+  const res = await c.env.DB.prepare('INSERT INTO media (url, filename, mime_type, size, alt_text, data) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind('', filename, mime, size, b.alt_text ?? null, data).run()
+  const id = Number(res.meta.last_row_id)
+  const url = `/api/media/file/${id}`
+  await c.env.DB.prepare('UPDATE media SET url = ? WHERE id = ?').bind(url, id).run()
+  await audit(c.env.DB, c.get('user'), 'create', 'media', id, { filename, size })
+  return c.json({ id, url, filename }, 201)
+})
+
+admin.delete('/media/:id', requirePerm('media'), async (c) => {
+  const id = Number(c.req.param('id'))
+  await c.env.DB.prepare('DELETE FROM media WHERE id = ?').bind(id).run()
+  await audit(c.env.DB, c.get('user'), 'delete', 'media', id)
+  return c.json({ success: true })
 })
 
 export default admin
