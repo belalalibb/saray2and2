@@ -1,46 +1,17 @@
-# CURRENT PROJECT STATE
+# STATE — webapp (موقع شركة أثاث فاخر + لوحة تحكم)
+Last-Updated: 2026-08-20 (Session 002 start)
 
-## Current Phase
-Phase 1 — Core Architecture + Database + Backend
+## الحقيقة الحالية
+- ⚠️ SANDBOX RESET حدث قبل هذه الجلسة: كل كود الجلسات السابقة فُقد (لم يكن هناك commit أو backup).
+- المشروع الآن قيد إعادة البناء الكاملة من السياق المعروف.
 
-## Current Task
-ENG-002: D1 Database schema + migrations
-
-## Current Subtask
-Writing migrations/0001_initial_schema.sql
-
-## Last Completed Task
-ENG-001: Engineering system + image extraction from PDF (37 catalog images in public/static/images/)
-
-## Next Exact Action
-Create migrations/0001_initial_schema.sql with all entities, then seed.sql, then apply locally:
-`npx wrangler d1 migrations apply webapp-production --local`
-
-## Completion
-~5%
-
-## Active Files
-- migrations/0001_initial_schema.sql
-- seed.sql
-- wrangler.jsonc
-
-## Relevant Components
-Database layer (D1 SQLite)
-
-## Current Architecture
-Hono (Cloudflare Pages) + D1 SQLite + SSR public pages + Admin SPA (static JS + REST API)
-
-## Known Issues
-None yet
-
-## Blockers
-None
-
-## Last Validation
-None yet
-
-## Last Session
-SESSION-001 (2026-08-20)
-
-## Resume Priority
-P0 — Database → Auth → Admin → Products → Homepage → Quotes
+## المعمارية (ثابتة — لا يعاد التخطيط)
+- Hono + TypeScript + Vite + Cloudflare Pages, D1 (--local dev)
+- Public site: SSR عربي RTL (رئيسية/منتجات/خدمات/مشاريع/تواصل) + WhatsApp
+- Admin SPA: /admin + public/static/admin.js (axios + Tailwind CDN)
+- Auth: sessions table + cookie, roles: admin/editor/sales
+- Tables: users, sessions, categories, products, product_images, services,
+  projects, project_images, leads, homepage_sections, why_us, settings, audit_log
+- Admin views: dashboard, products, categories, services, projects, leads,
+  homepage, settings, users, audit
+- Admin seed: admin@example.com / admin123
