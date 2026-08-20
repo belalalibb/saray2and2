@@ -434,24 +434,25 @@ async function vMedia(v) {
       </article>`).join('')}
     </div>`;
     const status = document.getElementById('med-status');
-    bindDropzone(document.getElementById('med-dz'), document.getElementById('med-file'), () => {});
-    document.getElementById('med-file').addEventListener('change', () => {});
-    // Multi-file upload handling
+    // Multi-file upload handling (click, file-select, and drag & drop)
     const doUpload = async (files) => {
       status.classList.remove('hidden');
-      let ok = 0, fail = 0;
+      let ok = 0, fail = 0, lastErr = '';
       for (const f of files) {
-        try { await uploadImageFile(f); ok++; } catch { fail++; }
+        try { await uploadImageFile(f); ok++; }
+        catch (er) { fail++; lastErr = (er.response && er.response.data && er.response.data.error) || er.message || ''; }
       }
       status.classList.add('hidden');
       if (ok) toast(`تم رفع ${ok} صورة بنجاح`);
-      if (fail) toast(`فشل رفع ${fail} صورة`, false);
+      if (fail) toast(`فشل رفع ${fail} صورة${lastErr ? ' — ' + lastErr : ''}`, false);
       vMedia(v);
     };
-    const medInput = document.getElementById('med-file');
-    medInput.onchange = () => { if (medInput.files.length) doUpload([...medInput.files]); };
     const medDz = document.getElementById('med-dz');
-    medDz.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) doUpload([...e.dataTransfer.files]); });
+    const medInput = document.getElementById('med-file');
+    medInput.addEventListener('change', () => { if (medInput.files.length) doUpload([...medInput.files]); medInput.value = ''; });
+    ['dragover','dragenter'].forEach(ev => medDz.addEventListener(ev, e => { e.preventDefault(); medDz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => medDz.addEventListener(ev, e => { e.preventDefault(); medDz.classList.remove('drag'); }));
+    medDz.addEventListener('drop', e => { if (e.dataTransfer.files.length) doUpload([...e.dataTransfer.files]); });
     v.querySelectorAll('[data-med-del]').forEach(b => b.addEventListener('click', async (e) => {
       e.preventDefault();
       if (!confirm('حذف الصورة نهائياً؟ تأكد أنها غير مستخدمة في الموقع.')) return;
@@ -813,42 +814,40 @@ async function vHomepage(v) {
     const { data } = await api.get('/admin/homepage');
     const SECTION_LABELS = { hero: 'الواجهة الرئيسية (Hero)', about: 'عن الشركة', categories: 'الفئات', featured: 'منتجات مميزة', services: 'الخدمات', projects: 'المشاريع', why_us: 'لماذا نحن', cta: 'دعوة للتواصل (CTA)' };
     v.innerHTML = `
-      <h3 class="font-bold text-brown mb-3">أقسام الصفحة الرئيسية</h3>
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-8">
-        <table class="w-full text-sm">
-          <thead class="bg-cream text-brown/70"><tr>
-            <th class="p-3 text-right">القسم</th><th class="p-3 text-right">العنوان</th><th class="p-3">الحالة</th><th class="p-3">إجراءات</th>
+      <h3 class="font-black text-charcoal mb-3"><i class="fas fa-table-cells-large text-gold ml-2"></i>أقسام الصفحة الرئيسية</h3>
+      <div class="card overflow-x-auto mb-8">
+        <table class="tbl min-w-[560px]"><thead><tr>
+            <th>القسم</th><th>العنوان</th><th class="!text-center">الحالة</th><th class="!text-center">إجراءات</th>
           </tr></thead>
           <tbody>${(data.sections || []).map(s => `
-            <tr class="border-t border-cream">
-              <td class="p-3 font-semibold">${esc(SECTION_LABELS[s.section_key] || s.section_key)}</td>
-              <td class="p-3">${esc(s.title_ar || '—')}</td>
-              <td class="p-3 text-center"><span class="badge ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.is_active ? 'مفعّل' : 'معطّل'}</span></td>
-              <td class="p-3 text-center whitespace-nowrap">
-                <button data-sec-edit="${s.id}" class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i> تعديل</button>
-                <button data-sec-toggle="${s.id}" data-active="${s.is_active}" class="text-amber-600 hover:underline"><i class="fas fa-power-off"></i> ${s.is_active ? 'تعطيل' : 'تفعيل'}</button>
+            <tr>
+              <td class="font-bold">${esc(SECTION_LABELS[s.section_key] || s.section_key)}</td>
+              <td>${esc(s.title_ar || '—')}</td>
+              <td class="text-center"><span class="badge ${s.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.is_active ? 'مفعّل' : 'معطّل'}</span></td>
+              <td class="text-center whitespace-nowrap">
+                <button data-sec-edit="${s.id}" class="act act-edit ml-1" title="تعديل"><i class="fas fa-pen"></i></button>
+                <button data-sec-toggle="${s.id}" data-active="${s.is_active}" class="act act-warn" title="${s.is_active ? 'تعطيل' : 'تفعيل'}"><i class="fas fa-power-off"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="font-bold text-brown">نقاط "لماذا نحن"</h3>
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 class="font-black text-charcoal"><i class="fas fa-star text-gold ml-2"></i>نقاط "لماذا نحن"</h3>
         <button id="wu-add" class="btn-gold"><i class="fas fa-plus ml-1"></i> إضافة نقطة</button>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table class="w-full text-sm">
-          <thead class="bg-cream text-brown/70"><tr>
-            <th class="p-3 text-right">الأيقونة</th><th class="p-3 text-right">العنوان</th><th class="p-3 text-right">الوصف</th><th class="p-3">إجراءات</th>
+      <div class="card overflow-x-auto">
+        <table class="tbl min-w-[560px]"><thead><tr>
+            <th>الأيقونة</th><th>العنوان</th><th>الوصف</th><th class="!text-center">إجراءات</th>
           </tr></thead>
           <tbody>${(data.why_us || []).map(w => `
-            <tr class="border-t border-cream">
-              <td class="p-3"><i class="fas ${esc(w.icon || 'fa-star')} text-gold"></i> <span class="text-xs text-brown/50">${esc(w.icon || '')}</span></td>
-              <td class="p-3 font-semibold">${esc(w.title_ar)}</td>
-              <td class="p-3 text-brown/70">${esc(w.description_ar || '—')}</td>
-              <td class="p-3 text-center whitespace-nowrap">
-                <button data-wu-edit='${esc(JSON.stringify(w))}' class="text-blue-600 hover:underline ml-2"><i class="fas fa-pen"></i></button>
-                <button data-wu-del="${w.id}" class="text-red-600 hover:underline"><i class="fas fa-trash"></i></button>
+            <tr>
+              <td><i class="fas ${esc(w.icon || 'fa-star')} text-gold"></i> <span class="text-xs text-brown/50">${esc(w.icon || '')}</span></td>
+              <td class="font-bold">${esc(w.title_ar)}</td>
+              <td class="text-brown/70">${esc(w.description_ar || '—')}</td>
+              <td class="text-center whitespace-nowrap">
+                <button data-wu-edit='${esc(JSON.stringify(w))}' class="act act-edit ml-1" title="تعديل"><i class="fas fa-pen"></i></button>
+                <button data-wu-del="${w.id}" class="act act-del" title="حذف"><i class="fas fa-trash"></i></button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -865,9 +864,12 @@ async function vHomepage(v) {
             <div><label class="lbl">نص الزر (CTA)</label><input id="hs-cta-text" class="inp" value="${esc(s.cta_text_ar || '')}"></div>
             <div><label class="lbl">رابط الزر</label><input id="hs-cta-url" class="inp" dir="ltr" value="${esc(s.cta_url || '')}"></div>
           </div>
-          <div><label class="lbl">رابط الصورة</label>
-            <div class="flex gap-2"><input id="hs-image" class="inp flex-1" dir="ltr" value="${esc(s.image_url || '')}">
-            <button id="hs-pick" class="btn-outline shrink-0"><i class="fas fa-images"></i></button></div>
+          <div><label class="lbl">صورة القسم</label>
+            <div class="flex items-center gap-3">
+              <img id="hs-preview" src="${esc(s.image_url || '')}" class="${s.image_url ? '' : 'hidden'} w-20 h-14 object-cover rounded-lg border border-sand shrink-0">
+              <input id="hs-image" class="inp flex-1" dir="ltr" placeholder="لا توجد صورة" value="${esc(s.image_url || '')}">
+              <button id="hs-pick" class="btn-outline shrink-0"><i class="fas fa-cloud-arrow-up ml-1"></i>اختيار / رفع</button>
+            </div>
           </div>
           <p id="hs-error" class="text-red-600 text-sm hidden"></p>
           <div class="flex gap-2 justify-end pt-2">
@@ -876,7 +878,8 @@ async function vHomepage(v) {
           </div>
         </div>`);
       const g = id => m.querySelector('#' + id);
-      g('hs-pick').addEventListener('click', () => pickImage(url => { g('hs-image').value = url; }));
+      g('hs-pick').addEventListener('click', () => pickImage(url => { g('hs-image').value = url; g('hs-preview').src = url; g('hs-preview').classList.remove('hidden'); }));
+      g('hs-image').addEventListener('input', () => { const u = g('hs-image').value.trim(); if (u) { g('hs-preview').src = u; g('hs-preview').classList.remove('hidden'); } else g('hs-preview').classList.add('hidden'); });
       g('hs-save').addEventListener('click', async () => {
         const body = { title_ar: g('hs-title').value.trim(), content_ar: g('hs-content').value.trim(),
           cta_text_ar: g('hs-cta-text').value.trim(), cta_url: g('hs-cta-url').value.trim(), image_url: g('hs-image').value.trim() };
@@ -933,44 +936,99 @@ async function vSettings(v) {
   try {
     const { data } = await api.get('/admin/settings');
     const S2 = {}; (data.settings || []).forEach(r => S2[r.key] = r.value);
-    const FIELDS = [
-      ['company_name_ar', 'اسم الشركة (عربي)'],
-      ['company_name_en', 'اسم الشركة (إنجليزي)'],
-      ['phone', 'رقم الهاتف'],
-      ['whatsapp', 'رقم واتساب'],
-      ['address_ar', 'العنوان'],
-      ['working_hours_ar', 'مواعيد العمل'],
-      ['whatsapp_default_message', 'رسالة واتساب الافتراضية'],
-      ['whatsapp_product_message', 'رسالة واتساب للمنتج ([PRODUCT] = اسم المنتج)'],
-      ['seo_default_title', 'عنوان SEO الافتراضي'],
-      ['seo_default_description', 'وصف SEO الافتراضي'],
-      ['facebook_url', 'رابط فيسبوك'],
-      ['instagram_url', 'رابط إنستجرام'],
+    const GROUPS = [
+      ['fa-id-card', 'بيانات الشركة', [
+        ['company_name_ar', 'اسم الشركة (عربي)'],
+        ['company_name_en', 'اسم الشركة (إنجليزي)'],
+        ['company_tagline_ar', 'السطر أسفل الاسم في الهيدر'],
+        ['working_hours_ar', 'مواعيد العمل'],
+        ['address_ar', 'العنوان'],
+        ['footer_about_ar', 'نبذة عن الشركة (الفوتر وصفحة من نحن)'],
+      ]],
+      ['fa-phone', 'التواصل وواتساب', [
+        ['phone', 'رقم الهاتف'],
+        ['whatsapp', 'رقم واتساب'],
+        ['contact_email', 'البريد الإلكتروني (اختياري — يظهر في الفوتر)'],
+        ['whatsapp_default_message', 'رسالة واتساب الافتراضية'],
+        ['whatsapp_product_message', 'رسالة واتساب للمنتج ([PRODUCT] = اسم المنتج)'],
+      ]],
+      ['fa-share-nodes', 'روابط السوشيال ميديا (اتركها فارغة لإخفائها من الموقع)', [
+        ['facebook_url', 'رابط فيسبوك'],
+        ['instagram_url', 'رابط إنستجرام'],
+        ['tiktok_url', 'رابط تيك توك'],
+        ['youtube_url', 'رابط يوتيوب'],
+      ]],
+      ['fa-magnifying-glass', 'تحسين محركات البحث (SEO)', [
+        ['seo_default_title', 'عنوان SEO الافتراضي'],
+        ['seo_default_description', 'وصف SEO الافتراضي'],
+      ]],
     ];
-    v.innerHTML = `
-      <div class="bg-white rounded-xl shadow-sm p-6 max-w-3xl">
-        <div class="grid md:grid-cols-2 gap-4">
-          ${FIELDS.map(([k, label]) => {
-            const long = k.includes('message') || k.includes('description') || k === 'address_ar';
-            const dir = (k.includes('url') || k === 'phone' || k === 'whatsapp' || k.includes('_en')) ? 'ltr' : 'rtl';
-            return `<div class="${long ? 'md:col-span-2' : ''}">
-              <label class="lbl">${label}</label>
-              ${long
-                ? `<textarea data-key="${k}" class="inp" rows="2">${esc(S2[k] || '')}</textarea>`
-                : `<input data-key="${k}" class="inp" dir="${dir}" value="${esc(S2[k] || '')}">`}
-            </div>`;
-          }).join('')}
+    const fieldHtml = ([k, label]) => {
+      const long = k.includes('message') || k.includes('description') || k === 'address_ar' || k === 'footer_about_ar';
+      const dir = (k.includes('url') || k === 'phone' || k === 'whatsapp' || k.includes('_en') || k.includes('email')) ? 'ltr' : 'rtl';
+      return `<div class="${long ? 'md:col-span-2' : ''}">
+        <label class="lbl">${label}</label>
+        ${long
+          ? `<textarea data-key="${k}" class="inp" rows="2">${esc(S2[k] || '')}</textarea>`
+          : `<input data-key="${k}" class="inp" dir="${dir}" value="${esc(S2[k] || '')}">`}
+      </div>`;
+    };
+    // Logo + favicon management card
+    const brandRow = (key, title, hint, dark) => `
+      <div class="flex flex-col sm:flex-row items-center gap-5 py-5 first:pt-0 last:pb-0">
+        <div class="w-24 h-24 rounded-2xl ${dark ? 'bg-charcoal' : 'bg-sand/60'} flex items-center justify-center overflow-hidden border-2 border-sand shrink-0">
+          <img data-brand-prev="${key}" src="${esc(S2[key] || '')}" class="${S2[key] ? '' : 'hidden'} w-full h-full object-contain p-2">
+          <i data-brand-ph="${key}" class="fas ${key === 'favicon_url' ? 'fa-globe' : 'fa-couch'} ${dark ? 'text-gold' : 'text-brown/40'} text-3xl ${S2[key] ? 'hidden' : ''}"></i>
         </div>
-        <p id="st-error" class="text-red-600 text-sm hidden mt-3"></p>
-        <div class="mt-5 flex justify-end">
-          <button id="st-save" class="btn-gold"><i class="fas fa-save ml-1"></i> حفظ الإعدادات</button>
+        <div class="flex-1 text-center sm:text-right">
+          <h4 class="font-black text-charcoal">${title}</h4>
+          <p class="text-xs text-brown/60 mt-1 mb-3">${hint}</p>
+          <div class="flex flex-wrap gap-2 justify-center sm:justify-start">
+            <button data-brand-pick="${key}" class="btn-gold !text-xs"><i class="fas fa-cloud-arrow-up ml-1"></i>رفع / اختيار صورة</button>
+            <button data-brand-clear="${key}" class="btn-outline !text-xs ${S2[key] ? '' : 'hidden'}"><i class="fas fa-rotate-left ml-1"></i>الافتراضي</button>
+          </div>
+          <input type="hidden" data-key="${key}" value="${esc(S2[key] || '')}">
         </div>
       </div>`;
+    v.innerHTML = `
+      <div class="max-w-3xl space-y-6">
+        <section class="card p-6">
+          <h3 class="font-black text-charcoal mb-2"><i class="fas fa-image text-gold ml-2"></i>الهوية البصرية (اللوجو)</h3>
+          <p class="text-xs text-brown/50 mb-4">تُحدَّث تلقائياً في الموقع فور الحفظ — الهيدر، الفوتر، وتبويب المتصفح.</p>
+          <div class="divide-y divide-sand">
+            ${brandRow('logo_url', 'اللوجو الرئيسي', 'يظهر في أعلى الموقع (الهيدر) وفي الفوتر. يُفضّل PNG بخلفية شفافة.', true)}
+            ${brandRow('favicon_url', 'أيقونة المتصفح (Favicon)', 'تظهر في تبويب المتصفح. صورة مربعة صغيرة (مثلاً 64×64 بكسل).', false)}
+          </div>
+        </section>
+        ${GROUPS.map(([icon, title, fields]) => `
+        <section class="card p-6">
+          <h3 class="font-black text-charcoal mb-4"><i class="fas ${icon} text-gold ml-2"></i>${title}</h3>
+          <div class="grid md:grid-cols-2 gap-4">${fields.map(fieldHtml).join('')}</div>
+        </section>`).join('')}
+        <p id="st-error" class="text-red-600 text-sm hidden bg-red-50 rounded-xl p-3"></p>
+        <div class="sticky bottom-4 flex justify-end z-10">
+          <button id="st-save" class="btn-gold !px-8 !py-3 shadow-xl"><i class="fas fa-save ml-1"></i> حفظ كل الإعدادات</button>
+        </div>
+      </div>`;
+    // Brand image pick/clear wiring
+    const setBrand = (key, u) => {
+      v.querySelector(`[data-key="${key}"]`).value = u;
+      const prev = v.querySelector(`[data-brand-prev="${key}"]`);
+      const ph = v.querySelector(`[data-brand-ph="${key}"]`);
+      const clr = v.querySelector(`[data-brand-clear="${key}"]`);
+      if (u) { prev.src = u; prev.classList.remove('hidden'); ph.classList.add('hidden'); clr.classList.remove('hidden'); }
+      else { prev.classList.add('hidden'); ph.classList.remove('hidden'); clr.classList.add('hidden'); }
+    };
+    v.querySelectorAll('[data-brand-pick]').forEach(b => b.addEventListener('click', () => pickImage(u => setBrand(b.dataset.brandPick, u))));
+    v.querySelectorAll('[data-brand-clear]').forEach(b => b.addEventListener('click', () => setBrand(b.dataset.brandClear, '')));
     document.getElementById('st-save').addEventListener('click', async () => {
+      const btn = document.getElementById('st-save');
+      btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin ml-1"></i> جارٍ الحفظ...';
       const body = {};
       v.querySelectorAll('[data-key]').forEach(el => body[el.dataset.key] = el.value.trim());
-      try { await api.put('/admin/settings', body); toast('تم حفظ الإعدادات'); }
+      try { await api.put('/admin/settings', body); toast('تم حفظ الإعدادات — ستظهر في الموقع فوراً'); }
       catch (er) { const eb = document.getElementById('st-error'); eb.textContent = errMsg(er); eb.classList.remove('hidden'); }
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-save ml-1"></i> حفظ كل الإعدادات';
     });
   } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }

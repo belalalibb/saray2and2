@@ -15,6 +15,17 @@ export function layout(ctx: SiteCtx, content: string): string {
   const title = ctx.title ? `${ctx.title} — ${companyName}` : (s.seo_default_title || companyName)
   const desc = ctx.description || s.seo_default_description || ''
   const wa = waLink(s.whatsapp || '01227932213', s.whatsapp_default_message || '')
+  const logo = s.logo_url || ''
+  const favicon = s.favicon_url || '/favicon.svg'
+  const tagline = s.company_tagline_ar || 'للأثاث الفندقي والضيافة'
+  const socials = [
+    ['facebook_url', 'fa-facebook-f', 'فيسبوك'],
+    ['instagram_url', 'fa-instagram', 'إنستجرام'],
+    ['tiktok_url', 'fa-tiktok', 'تيك توك'],
+    ['youtube_url', 'fa-youtube', 'يوتيوب'],
+  ].filter(([k]) => (s[k as string] || '').trim())
+  const socialsHtml = socials.length ? `<div class="flex gap-3 mt-4">${socials.map(([k, icon, label]) =>
+    `<a href="${esc(s[k as string])}" target="_blank" rel="noopener" aria-label="${label}" class="w-9 h-9 rounded-full bg-white/10 hover:bg-gold text-cream flex items-center justify-center transition-colors"><i class="fab ${icon}"></i></a>`).join('')}</div>` : ''
   const nav = [
     ['/', 'الرئيسية'],
     ['/products', 'المنتجات'],
@@ -33,7 +44,7 @@ export function layout(ctx: SiteCtx, content: string): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" href="${esc(favicon)}">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <meta property="og:title" content="${esc(title)}">
@@ -72,10 +83,12 @@ tailwind.config = { theme: { extend: {
 <header id="site-header" class="bg-cream/95 backdrop-blur sticky top-0 z-40 border-b border-sand">
   <div class="max-w-7xl mx-auto px-4 flex items-center justify-between h-20">
     <a href="/" id="brand-logo" class="flex items-center gap-3">
-      <span class="w-11 h-11 rounded-full bg-charcoal text-gold flex items-center justify-center text-xl"><i class="fas fa-couch"></i></span>
+      ${logo
+        ? `<img src="${esc(logo)}" alt="${esc(companyName)}" class="h-12 w-auto max-w-[150px] object-contain">`
+        : `<span class="w-11 h-11 rounded-full bg-charcoal text-gold flex items-center justify-center text-xl"><i class="fas fa-couch"></i></span>`}
       <span class="leading-tight">
-        <span class="block font-black text-lg text-charcoal">سرايا الأندلس</span>
-        <span class="block text-xs text-brown/70 tracking-wide">للأثاث الفندقي والضيافة</span>
+        <span class="block font-black text-lg text-charcoal">${esc(s.company_name_ar ? s.company_name_ar.replace(/\s*للأثاث.*$/, '') : 'سرايا الأندلس')}</span>
+        <span class="block text-xs text-brown/70 tracking-wide">${esc(tagline)}</span>
       </span>
     </a>
     <nav id="main-nav" class="hidden lg:flex items-center">${navHtml}</nav>
@@ -95,8 +108,10 @@ tailwind.config = { theme: { extend: {
 <footer id="site-footer" class="bg-charcoal text-cream/80 mt-20">
   <div class="max-w-7xl mx-auto px-4 py-14 grid md:grid-cols-3 gap-10">
     <section>
+      ${logo ? `<img src="${esc(logo)}" alt="${esc(companyName)}" class="h-14 w-auto max-w-[170px] object-contain mb-4">` : ''}
       <h3 class="text-gold font-bold text-lg mb-4">${esc(companyName)}</h3>
       <p class="text-sm leading-7">${esc(s.footer_about_ar || '')}</p>
+      ${socialsHtml}
     </section>
     <section>
       <h3 class="text-gold font-bold text-lg mb-4">روابط سريعة</h3>
@@ -110,7 +125,9 @@ tailwind.config = { theme: { extend: {
       <ul class="space-y-3 text-sm">
         <li><i class="fas fa-phone ml-2 text-gold"></i><a href="tel:${esc((s.phone||'').replace(/\s/g,''))}" onclick="trackEvent('phone_click')" dir="ltr">${esc(s.phone || '')}</a></li>
         <li><i class="fab fa-whatsapp ml-2 text-gold"></i><a href="${wa}" target="_blank" rel="noopener" onclick="trackEvent('whatsapp_click')" dir="ltr">${esc(s.whatsapp || '')}</a></li>
+        ${(s.contact_email || '').trim() ? `<li><i class="fas fa-envelope ml-2 text-gold"></i><a href="mailto:${esc(s.contact_email)}" dir="ltr">${esc(s.contact_email)}</a></li>` : ''}
         <li><i class="fas fa-location-dot ml-2 text-gold"></i>${esc(s.address_ar || '')}</li>
+        ${(s.working_hours_ar || '').trim() ? `<li><i class="fas fa-clock ml-2 text-gold"></i>${esc(s.working_hours_ar)}</li>` : ''}
       </ul>
     </section>
   </div>

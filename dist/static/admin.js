@@ -19,9 +19,9 @@ function toast(msg, ok = true) {
 }
 function modal(html) {
   const m = document.createElement('div');
-  m.className = 'fixed inset-0 z-50 modal-bg flex items-start justify-center overflow-y-auto py-10 px-4';
-  m.innerHTML = `<div class="bg-white rounded-2xl w-full max-w-2xl p-7 relative">
-    <button class="absolute top-4 left-4 text-brown/50 hover:text-brown text-lg" data-close><i class="fas fa-xmark"></i></button>${html}</div>`;
+  m.className = 'fixed inset-0 z-50 modal-bg flex items-start justify-center overflow-y-auto py-8 px-4';
+  m.innerHTML = `<div class="modal-card bg-white rounded-2xl w-full max-w-2xl p-6 sm:p-8 relative shadow-2xl">
+    <button class="absolute top-4 left-4 w-9 h-9 rounded-full bg-sand text-brown/60 hover:bg-red-100 hover:text-red-600 transition-colors" data-close><i class="fas fa-xmark"></i></button>${html}</div>`;
   m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.remove(); });
   document.body.appendChild(m);
   return m;
@@ -72,12 +72,13 @@ const NAV = [
   ['categories', 'fa-layer-group', 'الفئات', 'categories'],
   ['services', 'fa-handshake', 'الخدمات', 'services'],
   ['projects', 'fa-building', 'المشاريع', 'projects'],
+  ['media', 'fa-images', 'مكتبة الصور', 'media'],
   ['homepage', 'fa-house', 'الصفحة الرئيسية', 'homepage'],
   ['settings', 'fa-gear', 'الإعدادات', 'homepage'],
   ['users', 'fa-users-gear', 'المستخدمون', 'super'],
   ['audit', 'fa-clock-rotate-left', 'سجل النشاط', 'super'],
 ];
-const PERMS = { super_admin: ['*'], content_manager: ['products','categories','services','projects','media','homepage','dashboard'], sales: ['leads','dashboard'], editor: ['products','categories','services','projects','homepage','dashboard'] };
+const PERMS = { super_admin: ['*'], content_manager: ['products','categories','services','projects','media','homepage','dashboard'], sales: ['leads','dashboard'], editor: ['products','categories','services','projects','media','homepage','dashboard'] };
 function can(perm) {
   if (!perm) return true;
   if (perm === 'super') return S.user.role === 'super_admin';
@@ -122,11 +123,11 @@ function go(view) {
   S.view = view;
   app.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === view));
   const mn = document.getElementById('mobile-nav'); if (mn) mn.classList.add('hidden');
-  const titles = { dashboard: 'نظرة عامة', leads: 'الطلبات (CRM)', products: 'المنتجات', categories: 'الفئات', services: 'الخدمات', projects: 'المشاريع', homepage: 'الصفحة الرئيسية', settings: 'الإعدادات', users: 'المستخدمون', audit: 'سجل النشاط' };
+  const titles = { dashboard: 'نظرة عامة', leads: 'الطلبات (CRM)', products: 'المنتجات', categories: 'الفئات', services: 'الخدمات', projects: 'المشاريع', media: 'مكتبة الصور', homepage: 'الصفحة الرئيسية', settings: 'الإعدادات', users: 'المستخدمون', audit: 'سجل النشاط' };
   document.getElementById('page-title').textContent = titles[view] || '';
   const v = document.getElementById('view');
   v.innerHTML = '<div class="text-center py-20 text-brown/50"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
-  ({ dashboard: vDashboard, leads: vLeads, products: vProducts, categories: vCategories, services: vServices, projects: vProjects, homepage: vHomepage, settings: vSettings, users: vUsers, audit: vAudit }[view] || vDashboard)(v);
+  ({ dashboard: vDashboard, leads: vLeads, products: vProducts, categories: vCategories, services: vServices, projects: vProjects, media: vMedia, homepage: vHomepage, settings: vSettings, users: vUsers, audit: vAudit }[view] || vDashboard)(v);
 }
 
 // ---------- DASHBOARD ----------
@@ -264,21 +265,203 @@ async function openLead(id, refresh) {
   });
 }
 
-// ---------- MEDIA PICKER ----------
+// ---------- IMAGE UPLOAD (from device) ----------
+function fileToCompressedDataUrl(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    // Small PNG/WebP/GIF/SVG (logos with transparency): keep original, no canvas re-encode
+    if (file.size < 400000 && /image\/(png|webp|gif|svg\+xml)/.test(file.type)) {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(new Error('تعذر قراءة الملف'));
+      fr.readAsDataURL(file);
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      if (dataUrl.length > 1500000) dataUrl = canvas.toDataURL('image/jpeg', 0.62);
+      if (dataUrl.length > 1500000) {
+        canvas.width = Math.round(w * 0.7); canvas.height = Math.round(h * 0.7);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      }
+      resolve(dataUrl);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('تعذر قراءة الصورة — تأكد أنها ملف صورة صالح')); };
+    img.src = url;
+  });
+}
+async function uploadImageFile(file) {
+  if (!file.type.startsWith('image/')) throw new Error('يُسمح بملفات الصور فقط (JPG / PNG / WebP)');
+  const dataUrl = await fileToCompressedDataUrl(file);
+  const { data } = await api.post('/admin/media/upload', { data: dataUrl, filename: file.name });
+  return data.url;
+}
+function bindDropzone(zone, input, onFile) {
+  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); input.value = ''; });
+  ['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
+  zone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) onFile(f); });
+}
+
+// ---------- MEDIA PICKER (upload / library / URL) ----------
 async function pickImage(cb) {
-  const { data } = await api.get('/admin/media').catch(() => ({ data: { media: [] } }));
   const m = modal(`
-    <h2 class="text-lg font-black mb-4">اختر صورة</h2>
-    <input id="media-url-input" class="inp mb-3" dir="ltr" placeholder="أو الصق رابط صورة...">
-    <button id="media-url-use" class="btn btn-dark text-xs mb-4">استخدام الرابط</button>
-    <div class="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
-      ${(data.media||[]).map(im => `<button data-pick="${esc(im.url)}" class="rounded-xl overflow-hidden h-24 border-2 border-transparent hover:border-gold"><img src="${esc(im.url)}" loading="lazy" class="w-full h-full object-cover"></button>`).join('')}
+    <h2 class="text-lg font-black mb-4"><i class="fas fa-images text-gold ml-2"></i>اختيار صورة</h2>
+    <div class="flex gap-1 bg-sand/70 rounded-xl p-1 mb-5 w-fit max-w-full overflow-x-auto">
+      <button class="ptab active" data-tab="upload"><i class="fas fa-cloud-arrow-up ml-1"></i>رفع من الجهاز</button>
+      <button class="ptab" data-tab="library"><i class="fas fa-photo-film ml-1"></i>المكتبة</button>
+      <button class="ptab" data-tab="url"><i class="fas fa-link ml-1"></i>رابط</button>
+    </div>
+    <div data-pane="upload">
+      <label id="pk-dz" class="dropzone flex flex-col items-center justify-center py-10 px-4 text-center">
+        <i class="fas fa-cloud-arrow-up text-4xl text-gold mb-3"></i>
+        <p class="font-bold text-brown">اضغط لاختيار صورة من جهازك</p>
+        <p class="text-xs text-brown/50 mt-1.5">أو اسحب الصورة وأفلتها هنا — يعمل من الهاتف أو الكمبيوتر</p>
+        <p class="text-[11px] text-brown/40 mt-1">JPG · PNG · WebP — يتم ضغط الصور الكبيرة تلقائياً</p>
+        <input type="file" id="pk-file" accept="image/*" class="hidden">
+      </label>
+      <div id="pk-status" class="hidden mt-4 text-center text-sm font-bold text-brown bg-gold/10 rounded-xl py-3"><i class="fas fa-spinner fa-spin ml-2 text-gold"></i>جارٍ رفع الصورة...</div>
+      <div id="pk-error" class="hidden mt-4 text-sm text-red-600 bg-red-50 rounded-xl p-3"></div>
+    </div>
+    <div data-pane="library" class="hidden">
+      <div id="pk-lib" class="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[26rem] overflow-y-auto pr-1">
+        <p class="col-span-4 text-center text-brown/40 py-10"><i class="fas fa-spinner fa-spin text-xl"></i></p>
+      </div>
+    </div>
+    <div data-pane="url" class="hidden">
+      <label class="lbl">الصق رابط الصورة المباشر</label>
+      <div class="flex gap-2">
+        <input id="pk-url" class="inp" dir="ltr" placeholder="https://example.com/image.jpg">
+        <button id="pk-url-use" class="btn-gold shrink-0">استخدام</button>
+      </div>
+      <img id="pk-url-prev" class="hidden mt-4 max-h-40 rounded-xl border border-sand mx-auto">
     </div>`);
-  m.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { cb(b.dataset.pick); m.remove(); }));
-  m.querySelector('#media-url-use').addEventListener('click', () => {
-    const u = m.querySelector('#media-url-input').value.trim();
+  const g = id => m.querySelector('#' + id);
+  m.querySelectorAll('.ptab').forEach(t => t.addEventListener('click', () => {
+    m.querySelectorAll('.ptab').forEach(x => x.classList.toggle('active', x === t));
+    m.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== t.dataset.tab));
+    if (t.dataset.tab === 'library' && !m.__lib) { m.__lib = true; loadLib(); }
+  }));
+  // Upload tab
+  bindDropzone(g('pk-dz'), g('pk-file'), async (file) => {
+    g('pk-error').classList.add('hidden');
+    g('pk-dz').classList.add('hidden');
+    g('pk-status').classList.remove('hidden');
+    try {
+      const url = await uploadImageFile(file);
+      toast('تم رفع الصورة بنجاح');
+      cb(url); m.remove();
+    } catch (e) {
+      g('pk-status').classList.add('hidden');
+      g('pk-dz').classList.remove('hidden');
+      const eb = g('pk-error'); eb.textContent = (e.response && e.response.data && e.response.data.error) || e.message || 'فشل الرفع'; eb.classList.remove('hidden');
+    }
+  });
+  // Library tab
+  async function loadLib() {
+    const { data } = await api.get('/admin/media').catch(() => ({ data: { media: [] } }));
+    g('pk-lib').innerHTML = (data.media || []).map(im =>
+      `<button data-pick="${esc(im.url)}" class="rounded-xl overflow-hidden h-24 border-2 border-transparent hover:border-gold transition-colors relative group">
+        <img src="${esc(im.url)}" loading="lazy" class="w-full h-full object-cover">
+        ${im.source === 'upload' ? '<span class="absolute top-1 right-1 badge bg-gold text-white !text-[9px]">مرفوعة</span>' : ''}
+      </button>`).join('') || '<p class="col-span-4 text-center text-brown/40 py-10">لا توجد صور بعد</p>';
+    m.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { cb(b.dataset.pick); m.remove(); }));
+  }
+  // URL tab
+  g('pk-url').addEventListener('input', () => {
+    const u = g('pk-url').value.trim();
+    const p = g('pk-url-prev');
+    if (/^https?:\/\//.test(u) || u.startsWith('/')) { p.src = u; p.classList.remove('hidden'); } else p.classList.add('hidden');
+  });
+  g('pk-url-use').addEventListener('click', () => {
+    const u = g('pk-url').value.trim();
     if (u) { cb(u); m.remove(); }
   });
+}
+
+// ---------- MEDIA LIBRARY VIEW ----------
+async function vMedia(v) {
+  try {
+    const { data } = await api.get('/admin/media');
+    const uploads = (data.media || []).filter(x => x.source === 'upload');
+    const catalog = (data.media || []).filter(x => x.source !== 'upload');
+    const fmtSize = s => !s ? '' : s > 1048576 ? (s/1048576).toFixed(1) + ' MB' : Math.round(s/1024) + ' KB';
+    v.innerHTML = `
+    <label id="med-dz" class="dropzone flex flex-col sm:flex-row items-center justify-center gap-4 py-8 px-6 mb-8">
+      <i class="fas fa-cloud-arrow-up text-4xl text-gold"></i>
+      <span class="text-center sm:text-right">
+        <span class="block font-black text-brown">رفع صورة جديدة من جهازك</span>
+        <span class="block text-xs text-brown/50 mt-1">اضغط هنا أو اسحب الصورة وأفلتها — من الهاتف أو الكمبيوتر</span>
+      </span>
+      <input type="file" id="med-file" accept="image/*" class="hidden" multiple>
+    </label>
+    <div id="med-status" class="hidden mb-6 text-center text-sm font-bold text-brown bg-gold/10 rounded-xl py-3"><i class="fas fa-spinner fa-spin ml-2 text-gold"></i>جارٍ الرفع...</div>
+    <h3 class="font-black text-charcoal mb-3"><i class="fas fa-cloud text-gold ml-2"></i>الصور المرفوعة (${uploads.length})</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-10">
+      ${uploads.map(im => `
+      <article class="card overflow-hidden group">
+        <div class="relative h-32">
+          <img src="${esc(im.url)}" loading="lazy" class="w-full h-full object-cover">
+          <button data-med-del="${im.id}" class="act act-del absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity" title="حذف"><i class="fas fa-trash"></i></button>
+        </div>
+        <div class="p-2.5">
+          <p class="text-[11px] font-bold truncate" title="${esc(im.filename||'')}">${esc(im.filename || 'صورة')}</p>
+          <div class="flex items-center justify-between mt-1">
+            <span class="text-[10px] text-brown/40">${fmtSize(im.size)}</span>
+            <button data-med-copy="${esc(im.url)}" class="text-[10px] text-gold font-bold hover:underline"><i class="fas fa-copy ml-0.5"></i>نسخ الرابط</button>
+          </div>
+        </div>
+      </article>`).join('') || '<p class="col-span-full text-brown/50 text-sm bg-white rounded-2xl p-8 text-center">لم ترفع أي صور بعد — استخدم المربع أعلاه للرفع من جهازك.</p>'}
+    </div>
+    <h3 class="font-black text-charcoal mb-3"><i class="fas fa-book-open text-gold ml-2"></i>صور الكتالوج الأساسية (${catalog.length})</h3>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      ${catalog.map(im => `
+      <article class="card overflow-hidden">
+        <img src="${esc(im.url)}" loading="lazy" class="w-full h-24 object-cover">
+        <div class="p-2 flex items-center justify-between">
+          <span class="text-[10px] text-brown/50 truncate">${esc(im.filename)}</span>
+          <button data-med-copy="${esc(im.url)}" class="text-[10px] text-gold font-bold hover:underline shrink-0"><i class="fas fa-copy"></i></button>
+        </div>
+      </article>`).join('')}
+    </div>`;
+    const status = document.getElementById('med-status');
+    bindDropzone(document.getElementById('med-dz'), document.getElementById('med-file'), () => {});
+    document.getElementById('med-file').addEventListener('change', () => {});
+    // Multi-file upload handling
+    const doUpload = async (files) => {
+      status.classList.remove('hidden');
+      let ok = 0, fail = 0;
+      for (const f of files) {
+        try { await uploadImageFile(f); ok++; } catch { fail++; }
+      }
+      status.classList.add('hidden');
+      if (ok) toast(`تم رفع ${ok} صورة بنجاح`);
+      if (fail) toast(`فشل رفع ${fail} صورة`, false);
+      vMedia(v);
+    };
+    const medInput = document.getElementById('med-file');
+    medInput.onchange = () => { if (medInput.files.length) doUpload([...medInput.files]); };
+    const medDz = document.getElementById('med-dz');
+    medDz.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) doUpload([...e.dataTransfer.files]); });
+    v.querySelectorAll('[data-med-del]').forEach(b => b.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!confirm('حذف الصورة نهائياً؟ تأكد أنها غير مستخدمة في الموقع.')) return;
+      try { await api.delete('/admin/media/' + b.dataset.medDel); toast('تم الحذف'); vMedia(v); } catch (er) { toast(errMsg(er), false); }
+    }));
+    v.querySelectorAll('[data-med-copy]').forEach(b => b.addEventListener('click', () => {
+      const u = b.dataset.medCopy.startsWith('/') ? location.origin + b.dataset.medCopy : b.dataset.medCopy;
+      navigator.clipboard.writeText(u).then(() => toast('تم نسخ الرابط'));
+    }));
+  } catch (e) { v.innerHTML = `<p class="text-red-600">${errMsg(e)}</p>`; }
 }
 
 // ---------- PRODUCTS ----------
