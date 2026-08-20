@@ -1,132 +1,62 @@
-// ENG-004 — Admin REST API (/api/admin/*)
 import { Hono } from 'hono'
-import type { Bindings, AuthUser } from '../lib/auth'
-import { requireAuth, requirePerm, audit, hashPassword, hasPerm } from '../lib/auth'
-import { slugify } from '../lib/helpers'
+import type { Bindings, Vars } from '../lib'
+import { slugify, audit, hasPerm, hashPassword } from '../lib'
+import { requireAuth } from './api-auth'
 
-type Env = { Bindings: Bindings; Variables: { user: AuthUser } }
-const admin = new Hono<Env>()
+const admin = new Hono<{ Bindings: Bindings; Variables: Vars }>()
+admin.use('*', requireAuth)
 
-admin.use('*', requireAuth())
+const requirePerm = (perm: string) => async (c: any, next: any) => {
+  const u = c.get('user')
+  if (!hasPerm(u.role, perm)) return c.json({ error: 'لا تملك صلاحية الوصول لهذا القسم' }, 403)
+  await next()
+}
 
-// ---------- Dashboard stats ----------
-admin.get('/stats', async (c) => {
+// ---------- Dashboard ----------
+admin.get('/dashboard', async (c) => {
   const db = c.env.DB
-  const row = await db.prepare(`SELECT
-    (SELECT COUNT(*) FROM products) AS products_total,
-    (SELECT COUNT(*) FROM products WHERE status='published') AS products_published,
-    (SELECT COUNT(*) FROM categories) AS categories_total,
-    (SELECT COUNT(*) FROM services) AS services_total,
-    (SELECT COUNT(*) FROM projects) AS projects_total,
-    (SELECT COUNT(*) FROM leads) AS leads_total,
-    (SELECT COUNT(*) FROM leads WHERE status='new') AS leads_new,
-    (SELECT COUNT(*) FROM leads WHERE type='quote') AS quotes_total,
-    (SELECT COUNT(*) FROM leads WHERE type='contact') AS messages_total,
-    (SELECT COUNT(*) FROM analytics_events WHERE event_type='page_view') AS page_views,
-    (SELECT COUNT(*) FROM analytics_events WHERE event_type='whatsapp_click') AS whatsapp_clicks
-  `).first<any>()
-  const recentLeads = await db.prepare('SELECT id, request_ref, type, name, phone, status, created_at FROM leads ORDER BY created_at DESC LIMIT 6').all()
-  const recentAudit = await db.prepare('SELECT user_email, action, entity, entity_id, created_at FROM audit_log ORDER BY created_at DESC LIMIT 10').all()
-  return c.json({ stats: row, recent_leads: recentLeads.results, recent_activity: recentAudit.results })
-})
-
-// ---------- Products ----------
-admin.get('/products', requirePerm('products'), async (c) => {
-  const q = c.req.query('q') || ''
-  const status = c.req.query('status') || ''
-  const cat = c.req.query('category_id') || ''
-  let sql = `SELECT p.*, c.name_ar AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE 1=1`
-  const binds: any[] = []
-  if (q) { sql += ' AND (p.name_ar LIKE ? OR p.name_en LIKE ? OR p.sku LIKE ?)'; binds.push(`%${q}%`, `%${q}%`, `%${q}%`) }
-  if (status) { sql += ' AND p.status = ?'; binds.push(status) }
-  if (cat) { sql += ' AND p.category_id = ?'; binds.push(Number(cat)) }
-  sql += ' ORDER BY p.updated_at DESC LIMIT 200'
-  const rows = await c.env.DB.prepare(sql).bind(...binds).all()
-  return c.json({ products: rows.results })
-})
-
-admin.get('/products/:id', requirePerm('products'), async (c) => {
-  const id = Number(c.req.param('id'))
-  const p = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first()
-  if (!p) return c.json({ error: 'غير موجود' }, 404)
-  const images = await c.env.DB.prepare('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order').bind(id).all()
-  return c.json({ product: p, images: images.results })
-})
-
-const PRODUCT_FIELDS = ['sku','name_ar','name_en','short_desc_ar','short_desc_en','description_ar','description_en','category_id','main_image','specifications','materials_ar','materials_en','dimensions','features_ar','features_en','price','show_price','is_featured','is_new','is_offer','status','seo_title','seo_description','og_image'] as const
-
-admin.post('/products', requirePerm('products'), async (c) => {
-  const b = await c.req.json()
-  if (!b.name_ar) return c.json({ error: 'الاسم بالعربية مطلوب' }, 400)
-  const slug = b.slug ? slugify(b.slug) : slugify(b.name_ar)
-  const vals = PRODUCT_FIELDS.map(f => b[f] ?? null)
-  const res = await c.env.DB.prepare(
-    `INSERT INTO products (slug, ${PRODUCT_FIELDS.join(',')}) VALUES (?${',?'.repeat(PRODUCT_FIELDS.length)})`
-  ).bind(slug + '-' + Date.now().toString(36), ...vals).run()
-  const id = res.meta.last_row_id
-  // try nicer slug (unique check)
-  const exists = await c.env.DB.prepare('SELECT id FROM products WHERE slug = ? AND id != ?').bind(slug, id).first()
-  if (!exists) await c.env.DB.prepare('UPDATE products SET slug = ? WHERE id = ?').bind(slug, id).run()
-  if (Array.isArray(b.images)) {
-    for (let i = 0; i < b.images.length; i++) {
-      await c.env.DB.prepare('INSERT INTO product_images (product_id, url, sort_order) VALUES (?, ?, ?)').bind(id, b.images[i], i).run()
-    }
-  }
-  await audit(c.env.DB, c.get('user'), 'create', 'products', Number(id), { name: b.name_ar })
-  return c.json({ id }, 201)
-})
-
-admin.put('/products/:id', requirePerm('products'), async (c) => {
-  const id = Number(c.req.param('id'))
-  const b = await c.req.json()
-  const sets: string[] = []; const binds: any[] = []
-  for (const f of PRODUCT_FIELDS) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
-  if (b.slug) { sets.push('slug = ?'); binds.push(slugify(b.slug)) }
-  if (!sets.length && !Array.isArray(b.images)) return c.json({ error: 'لا توجد تعديلات' }, 400)
-  if (sets.length) {
-    sets.push("updated_at = datetime('now')", 'updated_by = ?'); binds.push(c.get('user').id, id)
-    await c.env.DB.prepare(`UPDATE products SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
-  }
-  if (Array.isArray(b.images)) {
-    await c.env.DB.prepare('DELETE FROM product_images WHERE product_id = ?').bind(id).run()
-    for (let i = 0; i < b.images.length; i++) {
-      await c.env.DB.prepare('INSERT INTO product_images (product_id, url, sort_order) VALUES (?, ?, ?)').bind(id, b.images[i], i).run()
-    }
-  }
-  await audit(c.env.DB, c.get('user'), 'update', 'products', id)
-  return c.json({ success: true })
-})
-
-admin.delete('/products/:id', requirePerm('products'), async (c) => {
-  const id = Number(c.req.param('id'))
-  await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run()
-  await audit(c.env.DB, c.get('user'), 'delete', 'products', id)
-  return c.json({ success: true })
+  const [products, published, categories, services, projects, leadsNew, leadsAll, users] = await Promise.all([
+    db.prepare('SELECT COUNT(*) n FROM products').first<any>(),
+    db.prepare("SELECT COUNT(*) n FROM products WHERE status='published'").first<any>(),
+    db.prepare('SELECT COUNT(*) n FROM categories').first<any>(),
+    db.prepare('SELECT COUNT(*) n FROM services').first<any>(),
+    db.prepare('SELECT COUNT(*) n FROM projects').first<any>(),
+    db.prepare("SELECT COUNT(*) n FROM leads WHERE status='new'").first<any>(),
+    db.prepare('SELECT COUNT(*) n FROM leads').first<any>(),
+    db.prepare('SELECT COUNT(*) n FROM users').first<any>(),
+  ])
+  const recentLeads = await db.prepare('SELECT * FROM leads ORDER BY created_at DESC LIMIT 5').all()
+  const topProducts = await db.prepare("SELECT id, name_ar, views, main_image FROM products ORDER BY views DESC LIMIT 5").all()
+  return c.json({
+    stats: {
+      products: products?.n ?? 0, published: published?.n ?? 0, categories: categories?.n ?? 0,
+      services: services?.n ?? 0, projects: projects?.n ?? 0,
+      leads_new: leadsNew?.n ?? 0, leads_all: leadsAll?.n ?? 0, users: users?.n ?? 0
+    },
+    recent_leads: recentLeads.results, top_products: topProducts.results
+  })
 })
 
 // ---------- Categories ----------
+const CAT_FIELDS = ['name_ar','name_en','description_ar','icon','image_url','sort_order','is_active'] as const
+
 admin.get('/categories', requirePerm('categories'), async (c) => {
-  const rows = await c.env.DB.prepare(`
-    SELECT c.*, (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) AS products_count
-    FROM categories c ORDER BY c.sort_order`).all()
+  const rows = await c.env.DB.prepare(
+    'SELECT c.*, (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) products_count FROM categories c ORDER BY c.sort_order'
+  ).all()
   return c.json({ categories: rows.results })
 })
-
-const CAT_FIELDS = ['name_ar','name_en','description_ar','description_en','image_url','icon','parent_id','sort_order','is_active','seo_title','seo_description'] as const
 
 admin.post('/categories', requirePerm('categories'), async (c) => {
   const b = await c.req.json()
   if (!b.name_ar) return c.json({ error: 'الاسم بالعربية مطلوب' }, 400)
-  const slug = slugify(b.slug || b.name_ar)
+  const slug = slugify(b.slug || b.name_en || b.name_ar) + '-' + Date.now().toString(36)
   const vals = CAT_FIELDS.map(f => b[f] ?? null)
   const res = await c.env.DB.prepare(
     `INSERT INTO categories (slug, ${CAT_FIELDS.join(',')}) VALUES (?${',?'.repeat(CAT_FIELDS.length)})`
-  ).bind(slug + '-' + Date.now().toString(36), ...vals).run()
-  const id = res.meta.last_row_id
-  const exists = await c.env.DB.prepare('SELECT id FROM categories WHERE slug = ? AND id != ?').bind(slug, id).first()
-  if (!exists) await c.env.DB.prepare('UPDATE categories SET slug = ? WHERE id = ?').bind(slug, id).run()
-  await audit(c.env.DB, c.get('user'), 'create', 'categories', Number(id))
-  return c.json({ id }, 201)
+  ).bind(slug, ...vals).run()
+  await audit(c.env.DB, c.get('user'), 'create', 'categories', Number(res.meta.last_row_id))
+  return c.json({ id: res.meta.last_row_id }, 201)
 })
 
 admin.put('/categories/:id', requirePerm('categories'), async (c) => {
@@ -143,10 +73,71 @@ admin.put('/categories/:id', requirePerm('categories'), async (c) => {
 
 admin.delete('/categories/:id', requirePerm('categories'), async (c) => {
   const id = Number(c.req.param('id'))
-  const used = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM products WHERE category_id = ?').bind(id).first<any>()
-  if (used && used.n > 0) return c.json({ error: `لا يمكن الحذف — يوجد ${used.n} منتج مرتبط بهذه الفئة` }, 409)
+  await c.env.DB.prepare('UPDATE products SET category_id = NULL WHERE category_id = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(id).run()
   await audit(c.env.DB, c.get('user'), 'delete', 'categories', id)
+  return c.json({ success: true })
+})
+
+// ---------- Products ----------
+const PROD_FIELDS = ['sku','name_ar','name_en','short_desc_ar','description_ar','features_ar','materials_ar','dimensions','price','show_price','main_image','category_id','is_featured','is_new','is_offer','status','seo_title','seo_description'] as const
+
+admin.get('/products', requirePerm('products'), async (c) => {
+  const rows = await c.env.DB.prepare(
+    'SELECT p.*, c.name_ar category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id ORDER BY p.created_at DESC'
+  ).all()
+  return c.json({ products: rows.results })
+})
+
+admin.get('/products/:id', requirePerm('products'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const p = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first()
+  if (!p) return c.json({ error: 'غير موجود' }, 404)
+  const images = await c.env.DB.prepare('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order').bind(id).all()
+  return c.json({ product: p, images: images.results })
+})
+
+admin.post('/products', requirePerm('products'), async (c) => {
+  const b = await c.req.json()
+  if (!b.name_ar) return c.json({ error: 'الاسم بالعربية مطلوب' }, 400)
+  const slug = slugify(b.slug || b.name_en || b.name_ar) + '-' + Date.now().toString(36)
+  const vals = PROD_FIELDS.map(f => b[f] ?? null)
+  const res = await c.env.DB.prepare(
+    `INSERT INTO products (slug, ${PROD_FIELDS.join(',')}) VALUES (?${',?'.repeat(PROD_FIELDS.length)})`
+  ).bind(slug, ...vals).run()
+  const id = res.meta.last_row_id
+  if (Array.isArray(b.images)) {
+    for (let i = 0; i < b.images.length; i++) {
+      await c.env.DB.prepare('INSERT INTO product_images (product_id, url, sort_order) VALUES (?, ?, ?)').bind(id, b.images[i], i).run()
+    }
+  }
+  await audit(c.env.DB, c.get('user'), 'create', 'products', Number(id), { name: b.name_ar })
+  return c.json({ id }, 201)
+})
+
+admin.put('/products/:id', requirePerm('products'), async (c) => {
+  const id = Number(c.req.param('id'))
+  const b = await c.req.json()
+  const sets: string[] = []; const binds: any[] = []
+  for (const f of PROD_FIELDS) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
+  if (sets.length) {
+    sets.push("updated_at = datetime('now')"); binds.push(id)
+    await c.env.DB.prepare(`UPDATE products SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  }
+  if (Array.isArray(b.images)) {
+    await c.env.DB.prepare('DELETE FROM product_images WHERE product_id = ?').bind(id).run()
+    for (let i = 0; i < b.images.length; i++) {
+      await c.env.DB.prepare('INSERT INTO product_images (product_id, url, sort_order) VALUES (?, ?, ?)').bind(id, b.images[i], i).run()
+    }
+  }
+  await audit(c.env.DB, c.get('user'), 'update', 'products', id)
+  return c.json({ success: true })
+})
+
+admin.delete('/products/:id', requirePerm('products'), async (c) => {
+  const id = Number(c.req.param('id'))
+  await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run()
+  await audit(c.env.DB, c.get('user'), 'delete', 'products', id)
   return c.json({ success: true })
 })
 
@@ -251,54 +242,25 @@ admin.delete('/projects/:id', requirePerm('projects'), async (c) => {
 
 // ---------- Leads ----------
 admin.get('/leads', requirePerm('leads'), async (c) => {
-  const status = c.req.query('status') || ''
-  const type = c.req.query('type') || ''
-  const q = c.req.query('q') || ''
-  let sql = 'SELECT * FROM leads WHERE 1=1'
+  const status = c.req.query('status')
+  let q = 'SELECT l.*, p.name_ar product_name FROM leads l LEFT JOIN products p ON p.id = l.product_id'
   const binds: any[] = []
-  if (status) { sql += ' AND status = ?'; binds.push(status) }
-  if (type) { sql += ' AND type = ?'; binds.push(type) }
-  if (q) { sql += ' AND (name LIKE ? OR phone LIKE ? OR company LIKE ? OR request_ref LIKE ?)'; binds.push(`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`) }
-  sql += ' ORDER BY created_at DESC LIMIT 300'
-  const rows = await c.env.DB.prepare(sql).bind(...binds).all()
+  if (status) { q += ' WHERE l.status = ?'; binds.push(status) }
+  q += ' ORDER BY l.created_at DESC'
+  const rows = await c.env.DB.prepare(q).bind(...binds).all()
   return c.json({ leads: rows.results })
 })
-
-admin.get('/leads/:id', requirePerm('leads'), async (c) => {
-  const id = Number(c.req.param('id'))
-  const lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first()
-  if (!lead) return c.json({ error: 'غير موجود' }, 404)
-  const notes = await c.env.DB.prepare(`
-    SELECT n.*, u.name AS user_name FROM lead_notes n LEFT JOIN admin_users u ON u.id = n.user_id
-    WHERE n.lead_id = ? ORDER BY n.created_at DESC`).bind(id).all()
-  return c.json({ lead, notes: notes.results })
-})
-
-const LEAD_STATUSES = ['new','contacted','qualified','quotation_sent','negotiation','won','lost','archived']
 
 admin.put('/leads/:id', requirePerm('leads'), async (c) => {
   const id = Number(c.req.param('id'))
   const b = await c.req.json()
   const sets: string[] = []; const binds: any[] = []
-  if (b.status) {
-    if (!LEAD_STATUSES.includes(b.status)) return c.json({ error: 'حالة غير صالحة' }, 400)
-    sets.push('status = ?'); binds.push(b.status)
-  }
-  if ('assigned_to' in b) { sets.push('assigned_to = ?'); binds.push(b.assigned_to) }
+  for (const f of ['status', 'notes']) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
   if (!sets.length) return c.json({ error: 'لا توجد تعديلات' }, 400)
   sets.push("updated_at = datetime('now')"); binds.push(id)
   await c.env.DB.prepare(`UPDATE leads SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
-  await audit(c.env.DB, c.get('user'), 'update', 'leads', id, { status: b.status })
+  await audit(c.env.DB, c.get('user'), 'update', 'leads', id)
   return c.json({ success: true })
-})
-
-admin.post('/leads/:id/notes', requirePerm('leads'), async (c) => {
-  const id = Number(c.req.param('id'))
-  const b = await c.req.json()
-  if (!b.note) return c.json({ error: 'الملاحظة مطلوبة' }, 400)
-  await c.env.DB.prepare('INSERT INTO lead_notes (lead_id, user_id, note) VALUES (?, ?, ?)')
-    .bind(id, c.get('user').id, String(b.note)).run()
-  return c.json({ success: true }, 201)
 })
 
 admin.delete('/leads/:id', requirePerm('leads'), async (c) => {
@@ -310,145 +272,113 @@ admin.delete('/leads/:id', requirePerm('leads'), async (c) => {
 
 // ---------- Homepage CMS ----------
 admin.get('/homepage', requirePerm('homepage'), async (c) => {
-  const sections = await c.env.DB.prepare('SELECT * FROM home_sections ORDER BY sort_order').all()
-  const whyUs = await c.env.DB.prepare('SELECT * FROM why_us_points ORDER BY sort_order').all()
+  const sections = await c.env.DB.prepare('SELECT * FROM homepage_sections ORDER BY sort_order').all()
+  const whyUs = await c.env.DB.prepare('SELECT * FROM why_us ORDER BY sort_order').all()
   return c.json({ sections: sections.results, why_us: whyUs.results })
 })
 
 admin.put('/homepage/sections/:id', requirePerm('homepage'), async (c) => {
   const id = Number(c.req.param('id'))
   const b = await c.req.json()
-  const FIELDS = ['title_ar','title_en','content_ar','content_en','image_url','cta_text_ar','cta_url','extra','sort_order','is_active']
   const sets: string[] = []; const binds: any[] = []
-  for (const f of FIELDS) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
+  for (const f of ['title_ar','content_ar','image_url','cta_text_ar','cta_url','sort_order','is_active']) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
   if (!sets.length) return c.json({ error: 'لا توجد تعديلات' }, 400)
   sets.push("updated_at = datetime('now')"); binds.push(id)
-  await c.env.DB.prepare(`UPDATE home_sections SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
-  await audit(c.env.DB, c.get('user'), 'update', 'home_sections', id)
+  await c.env.DB.prepare(`UPDATE homepage_sections SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  await audit(c.env.DB, c.get('user'), 'update', 'homepage_sections', id)
   return c.json({ success: true })
 })
 
 admin.post('/homepage/why-us', requirePerm('homepage'), async (c) => {
   const b = await c.req.json()
   if (!b.title_ar) return c.json({ error: 'العنوان مطلوب' }, 400)
-  const res = await c.env.DB.prepare('INSERT INTO why_us_points (icon, title_ar, title_en, description_ar, description_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(b.icon ?? null, b.title_ar, b.title_en ?? null, b.description_ar ?? null, b.description_en ?? null, b.sort_order ?? 0).run()
+  const res = await c.env.DB.prepare('INSERT INTO why_us (title_ar, description_ar, icon, sort_order) VALUES (?, ?, ?, ?)')
+    .bind(b.title_ar, b.description_ar ?? null, b.icon ?? null, b.sort_order ?? 0).run()
+  await audit(c.env.DB, c.get('user'), 'create', 'why_us', Number(res.meta.last_row_id))
   return c.json({ id: res.meta.last_row_id }, 201)
 })
 
 admin.put('/homepage/why-us/:id', requirePerm('homepage'), async (c) => {
   const id = Number(c.req.param('id'))
   const b = await c.req.json()
-  const FIELDS = ['icon','title_ar','title_en','description_ar','description_en','sort_order','is_active']
   const sets: string[] = []; const binds: any[] = []
-  for (const f of FIELDS) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
+  for (const f of ['title_ar','description_ar','icon','sort_order']) if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]) }
   if (!sets.length) return c.json({ error: 'لا توجد تعديلات' }, 400)
   binds.push(id)
-  await c.env.DB.prepare(`UPDATE why_us_points SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  await c.env.DB.prepare(`UPDATE why_us SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
   return c.json({ success: true })
 })
 
 admin.delete('/homepage/why-us/:id', requirePerm('homepage'), async (c) => {
-  await c.env.DB.prepare('DELETE FROM why_us_points WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  await c.env.DB.prepare('DELETE FROM why_us WHERE id = ?').bind(Number(c.req.param('id'))).run()
   return c.json({ success: true })
 })
 
 // ---------- Settings ----------
-admin.get('/settings', async (c) => {
-  const user = c.get('user')
-  if (!hasPerm(user.role, 'homepage') && user.role !== 'super_admin') return c.json({ error: 'ليس لديك صلاحية' }, 403)
-  const rows = await c.env.DB.prepare('SELECT key, value FROM settings').all()
+admin.get('/settings', requirePerm('settings'), async (c) => {
+  const rows = await c.env.DB.prepare('SELECT * FROM settings').all()
   return c.json({ settings: rows.results })
 })
 
-admin.put('/settings', async (c) => {
-  const user = c.get('user')
-  if (user.role !== 'super_admin' && user.role !== 'content_manager') return c.json({ error: 'ليس لديك صلاحية' }, 403)
+admin.put('/settings', requirePerm('settings'), async (c) => {
   const b = await c.req.json()
-  if (!b || typeof b !== 'object') return c.json({ error: 'بيانات غير صالحة' }, 400)
-  for (const [k, v] of Object.entries(b)) {
-    await c.env.DB.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')")
-      .bind(k, String(v)).run()
+  for (const [key, value] of Object.entries(b)) {
+    await c.env.DB.prepare(
+      "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+    ).bind(key, String(value ?? '')).run()
   }
-  await audit(c.env.DB, user, 'update', 'settings', null, { keys: Object.keys(b) })
+  await audit(c.env.DB, c.get('user'), 'update', 'settings')
   return c.json({ success: true })
 })
 
-// ---------- Users (super_admin only) ----------
-function requireSuper() {
-  return async (c: any, next: any) => {
-    if (c.get('user').role !== 'super_admin') return c.json({ error: 'مخصص للمدير العام فقط' }, 403)
-    await next()
-  }
-}
-
-admin.get('/users', requireSuper(), async (c) => {
-  const rows = await c.env.DB.prepare('SELECT id, email, name, role, is_active, last_login_at, created_at FROM admin_users ORDER BY id').all()
+// ---------- Users (admin only) ----------
+admin.get('/users', requirePerm('users'), async (c) => {
+  const rows = await c.env.DB.prepare('SELECT id, email, name, role, is_active, last_login_at, created_at FROM users ORDER BY created_at').all()
   return c.json({ users: rows.results })
 })
 
-admin.post('/users', requireSuper(), async (c) => {
+admin.post('/users', requirePerm('users'), async (c) => {
   const b = await c.req.json()
-  if (!b.email || !b.name || !b.password) return c.json({ error: 'البريد والاسم وكلمة المرور مطلوبة' }, 400)
-  if (String(b.password).length < 8) return c.json({ error: 'كلمة المرور 8 أحرف على الأقل' }, 400)
-  const role = ['super_admin','content_manager','sales','editor'].includes(b.role) ? b.role : 'editor'
-  const { hash, salt } = await hashPassword(String(b.password))
-  try {
-    const res = await c.env.DB.prepare('INSERT INTO admin_users (email, name, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?)')
-      .bind(String(b.email).toLowerCase(), b.name, hash, salt, role).run()
-    await audit(c.env.DB, c.get('user'), 'create', 'admin_users', Number(res.meta.last_row_id))
-    return c.json({ id: res.meta.last_row_id }, 201)
-  } catch { return c.json({ error: 'البريد مستخدم بالفعل' }, 409) }
+  if (!b.email || !b.name || !b.password) return c.json({ error: 'الاسم والبريد وكلمة المرور مطلوبة' }, 400)
+  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(String(b.email).toLowerCase()).first()
+  if (exists) return c.json({ error: 'البريد مستخدم مسبقاً' }, 400)
+  const res = await c.env.DB.prepare('INSERT INTO users (email, name, password_hash, role, is_active) VALUES (?, ?, ?, ?, ?)')
+    .bind(String(b.email).toLowerCase(), b.name, await hashPassword(b.password), b.role || 'editor', b.is_active ?? 1).run()
+  await audit(c.env.DB, c.get('user'), 'create', 'users', Number(res.meta.last_row_id), { email: b.email })
+  return c.json({ id: res.meta.last_row_id }, 201)
 })
 
-admin.put('/users/:id', requireSuper(), async (c) => {
+admin.put('/users/:id', requirePerm('users'), async (c) => {
   const id = Number(c.req.param('id'))
   const b = await c.req.json()
+  const me = c.get('user')
+  if (id === me.id && b.is_active === 0) return c.json({ error: 'لا يمكنك تعطيل حسابك' }, 400)
   const sets: string[] = []; const binds: any[] = []
   if (b.name) { sets.push('name = ?'); binds.push(b.name) }
+  if (b.email) { sets.push('email = ?'); binds.push(String(b.email).toLowerCase()) }
   if (b.role) { sets.push('role = ?'); binds.push(b.role) }
-  if ('is_active' in b) {
-    if (id === c.get('user').id && !b.is_active) return c.json({ error: 'لا يمكنك تعطيل حسابك' }, 400)
-    sets.push('is_active = ?'); binds.push(b.is_active ? 1 : 0)
-  }
-  if (b.password) {
-    if (String(b.password).length < 8) return c.json({ error: 'كلمة المرور 8 أحرف على الأقل' }, 400)
-    const { hash, salt } = await hashPassword(String(b.password))
-    sets.push('password_hash = ?', 'password_salt = ?'); binds.push(hash, salt)
-  }
+  if ('is_active' in b) { sets.push('is_active = ?'); binds.push(b.is_active) }
+  if (b.password) { sets.push('password_hash = ?'); binds.push(await hashPassword(b.password)) }
   if (!sets.length) return c.json({ error: 'لا توجد تعديلات' }, 400)
   sets.push("updated_at = datetime('now')"); binds.push(id)
-  await c.env.DB.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
-  await audit(c.env.DB, c.get('user'), 'update', 'admin_users', id)
+  await c.env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+  await audit(c.env.DB, c.get('user'), 'update', 'users', id)
   return c.json({ success: true })
 })
 
-admin.delete('/users/:id', requireSuper(), async (c) => {
+admin.delete('/users/:id', requirePerm('users'), async (c) => {
   const id = Number(c.req.param('id'))
-  if (id === c.get('user').id) return c.json({ error: 'لا يمكنك حذف حسابك' }, 400)
-  await c.env.DB.prepare('DELETE FROM admin_users WHERE id = ?').bind(id).run()
-  await audit(c.env.DB, c.get('user'), 'delete', 'admin_users', id)
+  const me = c.get('user')
+  if (id === me.id) return c.json({ error: 'لا يمكنك حذف حسابك' }, 400)
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
+  await audit(c.env.DB, c.get('user'), 'delete', 'users', id)
   return c.json({ success: true })
 })
 
-// ---------- Audit log ----------
-admin.get('/audit', requireSuper(), async (c) => {
+// ---------- Audit log (admin only) ----------
+admin.get('/audit', requirePerm('audit'), async (c) => {
   const rows = await c.env.DB.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 200').all()
   return c.json({ audit: rows.results })
-})
-
-// ---------- Media library (list catalog images) ----------
-admin.get('/media', requirePerm('media'), async (c) => {
-  // Static catalog images + media table entries
-  const staticImages = [
-    'hero-main', 'bedroom-1','bedroom-2','bedroom-3','bedroom-4','bedroom-5','bedroom-6','bedroom-7','bedroom-8',
-    'living-1','living-2','living-3','living-4','living-5','living-6','living-7','living-8',
-    'dining-1','dining-2','dining-3','dining-4','dining-5','dining-6','dining-7','dining-8',
-    'office-1','office-2','office-3','office-4','office-5',
-    'storage-1','storage-2','storage-3','storage-6'
-  ].map(n => ({ url: `/static/images/${n}.jpg`, filename: `${n}.jpg`, source: 'catalog' }))
-  const rows = await c.env.DB.prepare('SELECT * FROM media ORDER BY created_at DESC LIMIT 100').all()
-  return c.json({ media: [...staticImages, ...(rows.results as any[]).map(m => ({ ...m, source: 'upload' }))] })
 })
 
 export default admin
