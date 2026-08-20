@@ -1,0 +1,12 @@
+# TASKS
+- [x] T00 Reality check بعد الـ reset — الكود فارغ (قالب فقط)
+- [x] T01 Schema + migrations + seed
+- [x] T02 Backend: auth (PBKDF2 + sessions + RBAC) + admin API + public API
+- [x] T03 Public SSR site (RTL) + SEO (sitemap/robots/404)
+- [x] T04 Admin SPA (admin.js كامل: 10 views)
+- [x] T05 Build + migrate + seed + PM2 + اختبارات curl (Session 003: كلها ناجحة)
+- [x] T06 استعادة المشروع من GitHub بعد reset + توحيد الخطين (A هو المعتمد)
+- [x] T07 إصلاح hash كلمة سر الأدمن في seed.sql ليطابق SarayaAdmin@2026 الموثقة
+- [ ] T08 Commit + Push إلى GitHub (main) — قيد التنفيذ
+- [ ] T09 (اختياري) Deploy إنتاجي إلى Cloudflare Pages + D1 production — بانتظار المستخدم
+- [ ] T10 (اختياري) ProjectBackup tar.gz
